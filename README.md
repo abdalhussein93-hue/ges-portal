@@ -73,7 +73,42 @@ became `Côte d’Ivoire` in the Camp nationality list.
 
 ---
 
-## Put it online
+## Put it online on Railway (recommended)
+
+The repository contains `railway.json`: Railway builds the `Dockerfile`, checks `/healthz`, restarts on failure,
+and runs **one** copy of the server (the server is the single writer of the database - do not add replicas).
+
+1. On [railway.com](https://railway.com): **New Project → Deploy from GitHub repo** → choose this repository
+   (allow Railway's GitHub app to read it).
+2. In the project: **+ New → Database → PostgreSQL**.
+3. Open the portal service → **Variables** and add:
+
+   | Variable | Value |
+   |---|---|
+   | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (Railway fills in the private address of the database) |
+   | `ADMIN_USERNAME` | `admin` |
+   | `ADMIN_PASSWORD` | your admin password (kept only in Railway, never in the code) |
+   | `ADMIN_MUST_CHANGE` | `false` |
+   | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | `30` (gives the old server time to save and hand over during a deploy) |
+
+   `PORT` is set by Railway, and `TRUST_PROXY=1` is already set in the Dockerfile.
+4. Portal service → **Settings → Networking → Generate Domain** (or add your own domain). HTTPS is automatic.
+5. Railway deploys. The logs end with `[start] ready.` Open the domain and sign in as the admin.
+6. Bring in the desktop data and create the accounts (steps 7–9 of the next section).
+
+**Updating:** push to GitHub; Railway deploys automatically. The new server starts while the old one is still running,
+answers "updating, please wait" for a few seconds, waits for the old one to stop, then takes over with the same data.
+Saves made during the switch are retried by the browsers, not lost.
+
+**Backups on Railway:**
+* inside the database (always on): every change, daily copies (60 days), copies before imports - see *Users, backups & activity*;
+* **turn on Railway's own backups** for the PostgreSQL service (PostgreSQL service → *Backups*, set a daily schedule);
+* keep an **off-site copy**: download *Download current data* for each app weekly, or run `pg_dump` from your PC
+  against the PostgreSQL service's public connection URL.
+
+The `backup` service in `docker-compose.yml` is for a self-managed server (next section); Railway does not use it.
+
+## Put it online on your own server (Docker Compose)
 
 You need a Linux server (for example 2 vCPU / 2 GB RAM, Ubuntu 24.04) and a domain or sub-domain.
 
@@ -219,3 +254,4 @@ scripts/backup-loop.sh nightly pg_dump
 | `CHECKPOINT_EVERY` | 50 | changes between full copies |
 | `MAX_UPLOAD_MB` | 80 | largest import / save |
 | `DATABASE_POOL_SIZE` | 10 | database connections |
+| `LOCK_WAIT_SECONDS` | 600 | how long a new server waits for the previous one to stop during a deploy |

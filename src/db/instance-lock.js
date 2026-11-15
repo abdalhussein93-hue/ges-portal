@@ -26,4 +26,27 @@ async function acquireInstanceLock(db, purpose = 'The portal server') {
   };
 }
 
-module.exports = { acquireInstanceLock };
+const BUSY = /another portal process/;
+
+/**
+ * Like acquireInstanceLock, but waits while another process holds the lock
+ * (during a deploy the old server is still running for a few seconds).
+ * @param {{timeoutMs: number, onWait?: () => void, shouldStop?: () => boolean, intervalMs?: number}} options
+ */
+async function waitForInstanceLock(db, { timeoutMs, onWait = () => { }, shouldStop = () => false, intervalMs = 2000 }) {
+  const started = Date.now();
+  let warned = false;
+  for (;;) {
+    try {
+      return await acquireInstanceLock(db);
+    } catch (err) {
+      if (!BUSY.test(err.message)) throw err;
+      if (shouldStop()) return null;
+      if (Date.now() - started >= timeoutMs) throw err;
+      if (!warned) { onWait(); warned = true; }
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+  }
+}
+
+module.exports = { acquireInstanceLock, waitForInstanceLock };

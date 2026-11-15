@@ -95,4 +95,4 @@ async function startPortal(url, overrides) {
   return { base, container, config, close, request, login, events };
 }
 
-module.exports = { testDatabaseUrl, wipeDatabase, startPortal, ADMIN_PASSWORD };
+module.exports = { testDatabaseUrl, wipeDatabase, startPortal, makeConfig, ADMIN_PASSWORD };

@@ -13,9 +13,13 @@ const { UserAdminService } = require('./services/user-admin');
 const { DocumentService } = require('./services/documents');
 const { LiveHub } = require('./services/live');
 
-async function createContainer(config, { log = console.log } = {}) {
+/**
+ * @param {{log?: Function, migrate?: boolean}} options  migrate=false: the caller migrates later
+ *   (the server does it only after it holds the single-writer lock)
+ */
+async function createContainer(config, { log = console.log, migrate: runMigrations = true } = {}) {
   const db = new Database(config.databaseUrl, { max: config.databasePoolSize });
-  await migrate(db, log);
+  if (runMigrations) await migrate(db, log);
   const users = new UsersRepository(db);
   const sessions = new SessionsRepository(db);
   const audit = new AuditRepository(db);
