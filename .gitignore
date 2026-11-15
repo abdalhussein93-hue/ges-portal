@@ -1,0 +1,20 @@
+# secrets
+.env
+
+# dependencies
+node_modules/
+
+# personal data - never commit
+seed/
+data/
+backups/
+*.dump
+
+# local paths to the desktop programs (copy from tools/app-sources.example.json)
+tools/app-sources.json
+
+# editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

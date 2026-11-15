@@ -1,0 +1,80 @@
+# GES Operations Portal - production setup on one server.
+#
+#   db      PostgreSQL 16 (data in the "pgdata" volume)
+#   app     the portal (Node.js)
+#   backup  nightly pg_dump of the whole database into ./backups (kept BACKUP_KEEP_DAYS days)
+#   caddy   HTTPS with a free, automatically renewed certificate for DOMAIN
+#
+# 1. Point DOMAIN to this server's IP address (DNS "A" record).
+# 2. cp .env.example .env   and fill it in.
+# 3. docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: portal
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal -d portal"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://portal:${POSTGRES_PASSWORD}@db:5432/portal
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_MUST_CHANGE: ${ADMIN_MUST_CHANGE:-false}
+      TRUST_PROXY: "1"
+      SESSION_IDLE_HOURS: ${SESSION_IDLE_HOURS:-12}
+      SESSION_MAX_DAYS: ${SESSION_MAX_DAYS:-14}
+      SNAPSHOT_DAYS: ${SNAPSHOT_DAYS:-60}
+    expose:
+      - "8080"
+    stop_grace_period: 20s
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: portal
+      PGDATABASE: portal
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-loop.sh:/backup-loop.sh:ro
+    entrypoint: ["/bin/sh", "/backup-loop.sh"]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

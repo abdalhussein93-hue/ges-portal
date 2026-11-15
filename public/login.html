@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — GES Portal</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+  :root{--blue:#1d4ed8;--blue2:#1e3a8a;--text:#0f172a;--text2:#64748b;--border:#e2e8f0;--red:#dc2626;--green:#059669}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;color:var(--text);
+    background:linear-gradient(135deg,#0f2a5c 0%,#1d4ed8 55%,#0ea5e9 100%)}
+  .card{width:100%;max-width:400px;background:#fff;border-radius:16px;box-shadow:0 24px 60px rgba(2,6,23,.35);padding:32px 28px}
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .brand img{width:42px;height:42px}
+  .brand b{display:block;font-size:17px;line-height:1.2}
+  .brand span{font-size:12px;color:var(--text2)}
+  h1{font-size:19px;margin:0 0 4px}
+  p.sub{margin:0 0 18px;color:var(--text2);font-size:13px}
+  label{display:block;font-size:12px;font-weight:600;margin:12px 0 5px;color:#334155}
+  input{width:100%;padding:11px 12px;border:1.5px solid #cbd5e1;border-radius:9px;font-size:15px;outline:none;font-family:inherit}
+  input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(29,78,216,.15)}
+  button{width:100%;margin-top:20px;padding:12px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+  button:hover{background:var(--blue2)}
+  button:disabled{opacity:.6;cursor:wait}
+  .msg{display:none;margin-top:14px;padding:10px 12px;border-radius:8px;font-size:13px}
+  .msg.err{display:block;background:#fef2f2;color:var(--red);border:1px solid #fecaca}
+  .msg.ok{display:block;background:#ecfdf5;color:var(--green);border:1px solid #a7f3d0}
+  .hint{font-size:11.5px;color:var(--text2);margin-top:6px}
+  .link{display:block;text-align:center;margin-top:14px;font-size:13px;color:var(--blue);text-decoration:none}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="brand"><img src="/favicon.ico" alt=""><div><b>GES Operations Portal</b><span>Camp · Manpower · Costing</span></div></div>
+
+  <form id="loginForm" autocomplete="on">
+    <h1>Sign in</h1>
+    <p class="sub">Use the account your administrator gave you.</p>
+    <label for="u">Username</label>
+    <input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
+    <button id="loginBtn" type="submit">Sign in</button>
+    <div class="msg" id="loginMsg"></div>
+  </form>
+
+  <form id="changeForm" class="hidden" autocomplete="off">
+    <h1 id="changeTitle">Choose a new password</h1>
+    <p class="sub" id="changeSub">For your security, please choose your own password before continuing.</p>
+    <div id="oldRow">
+      <label for="op">Current password</label>
+      <input id="op" type="password" autocomplete="current-password">
+    </div>
+    <label for="np">New password</label>
+    <input id="np" type="password" autocomplete="new-password" required minlength="8">
+    <div class="hint">At least 8 characters. A short sentence is easy to remember and hard to guess.</div>
+    <label for="cp">Repeat new password</label>
+    <input id="cp" type="password" autocomplete="new-password" required>
+    <button id="changeBtn" type="submit">Save new password</button>
+    <div class="msg" id="changeMsg"></div>
+    <a class="link hidden" id="backLink" href="/">← Back to the portal</a>
+  </form>
+</main>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var next = q.get('next') || '/';
+  if (!/^\/(?![\/\\])/.test(next) || next.indexOf('/api/') === 0 || next.indexOf('/login') === 0) next = '/';
+  var justTyped = null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function post(url, body) {
+    return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { d._status = r.status; return d; }); });
+  }
+  function msg(id, text, ok) { var m = $(id); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
+  function showChange(voluntary) {
+    $('loginForm').classList.add('hidden');
+    $('changeForm').classList.remove('hidden');
+    $('oldRow').classList.toggle('hidden', !!justTyped);
+    if (voluntary) { $('changeTitle').textContent = 'Change my password'; $('changeSub').textContent = 'Signing in on other devices will need the new password.'; $('backLink').classList.remove('hidden'); }
+    (justTyped ? $('np') : $('op')).focus();
+  }
+
+  // already signed in?
+  fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
+    if (!me) { $('u').focus(); return; }
+    if (me.mustChange) return showChange(false);
+    if (q.get('change')) return showChange(true);
+    location.replace(next);
+  }).catch(function () { $('u').focus(); });
+
+  $('loginForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var b = $('loginBtn'); b.disabled = true; $('loginMsg').className = 'msg';
+    var pw = $('p').value;
+    post('/api/login', { username: $('u').value.trim(), password: pw }).then(function (d) {
+      b.disabled = false;
+      if (!d.ok) { msg('loginMsg', d.error || 'Sign-in failed.'); $('p').select(); return; }
+      if (d.mustChange) { justTyped = pw; return showChange(false); }
+      location.replace(next);
+    }).catch(function () { b.disabled = false; msg('loginMsg', 'Cannot reach the server. Check your internet connection.'); });
+  });
+
+  $('changeForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var np = $('np').value, cp = $('cp').value;
+    if (np.length < 8) return msg('changeMsg', 'The new password must be at least 8 characters.');
+    if (np !== cp) return msg('changeMsg', 'The two new passwords do not match.');
+    var b = $('changeBtn'); b.disabled = true;
+    post('/api/me/password', { oldPassword: justTyped || $('op').value, newPassword: np }).then(function (d) {
+      b.disabled = false;
+      if (!d.ok) { if (d._status === 401) { location.replace('/login'); return; } return msg('changeMsg', d.error || 'Could not change the password.'); }
+      msg('changeMsg', 'Password saved. Opening the portal…', true);
+      setTimeout(function () { location.replace(next); }, 900);
+    }).catch(function () { b.disabled = false; msg('changeMsg', 'Cannot reach the server.'); });
+  });
+})();
+</script>
+</body>
+</html>

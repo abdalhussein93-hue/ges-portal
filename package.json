@@ -1,0 +1,23 @@
+{
+  "name": "ges-portal",
+  "version": "1.0.0",
+  "description": "GES Operations Portal - Camp Management, Manpower and Daily Costing in one live web portal",
+  "private": true,
+  "license": "UNLICENSED",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "build:apps": "node tools/build-apps.js",
+    "test": "node --test --test-concurrency=1 \"test/unit/*.test.js\" \"test/integration/*.test.js\"",
+    "test:unit": "node --test \"test/unit/*.test.js\"",
+    "test:integration": "node --test --test-concurrency=1 \"test/integration/*.test.js\"",
+    "reset-admin": "node src/cli.js reset-admin",
+    "status": "node src/cli.js status"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}

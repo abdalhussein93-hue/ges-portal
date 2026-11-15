@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GES Operations Portal</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+  :root{--bg:#f1f5f9;--card:#fff;--text:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#1d4ed8}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;color:var(--text);background:var(--bg);font-size:14px}
+  header{background:linear-gradient(100deg,#0b1f45,#1d4ed8 70%,#0ea5e9);color:#fff;padding:18px 24px 64px}
+  .bar{max-width:1080px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:10px;flex:1;min-width:220px}
+  .brand img{width:34px;height:34px}
+  .brand b{font-size:17px;display:block}
+  .brand span{font-size:12px;opacity:.8}
+  .who{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .who a,.who button{color:#fff;text-decoration:none;font:inherit;font-size:13px;font-weight:600;background:rgba(255,255,255,.14);border:0;padding:8px 12px;border-radius:9px;cursor:pointer}
+  .who a:hover,.who button:hover{background:rgba(255,255,255,.24)}
+  .hello{max-width:1080px;margin:26px auto 0}
+  .hello h1{margin:0;font-size:24px}
+  .hello p{margin:6px 0 0;opacity:.85}
+  main{max-width:1080px;margin:-40px auto 40px;padding:0 16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 6px 18px rgba(15,23,42,.06);text-decoration:none;color:inherit;position:relative;overflow:hidden;transition:transform .15s,box-shadow .15s}
+  a.card:hover,a.card:focus-visible{transform:translateY(-2px);box-shadow:0 14px 30px rgba(15,23,42,.12);outline:none}
+  .card::before{content:"";position:absolute;inset:0 0 auto 0;height:5px;background:var(--c)}
+  .card .top{display:flex;align-items:center;gap:12px}
+  .icon{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--c) 12%,#fff);color:var(--c);flex:none}
+  .icon svg{width:26px;height:26px}
+  .card h2{margin:0;font-size:17px}
+  .card p{margin:0;color:var(--muted);line-height:1.5;flex:1}
+  .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+  .chip{padding:3px 9px;border-radius:999px;font-weight:700;font-size:11.5px}
+  .r-admin{background:#fee2e2;color:#b91c1c}.r-operator{background:#dcfce7;color:#15803d}.r-viewer{background:#e0e7ff;color:#3730a3}
+  .online{color:var(--muted);display:flex;align-items:center;gap:5px}
+  .online i{width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block}
+  .open{margin-left:auto;font-weight:700;color:var(--c)}
+  .card.locked{opacity:.6;background:#f8fafc}
+  .card.locked .open{color:var(--muted)}
+  .notice{background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:12px;padding:12px 14px;margin-bottom:16px;display:none}
+  .empty{color:var(--muted);padding:30px;text-align:center}
+  footer{max-width:1080px;margin:0 auto 30px;padding:0 16px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand"><img src="/favicon.ico" alt=""><div><b>GES Operations Portal</b><span>Global Emirates Services</span></div></div>
+    <div class="who" id="who"></div>
+  </div>
+  <div class="hello"><h1 id="hello">Welcome</h1><p>Choose an app to open. Everything you change is saved on the server and shown to your colleagues straight away.</p></div>
+</header>
+<main>
+  <div class="notice" id="notice" role="alert"></div>
+  <div class="grid" id="apps"><div class="empty">Loading…</div></div>
+</main>
+<footer id="foot"></footer>
+<script src="/shared/portal-bar.js"></script>
+<script>
+(function () {
+  'use strict';
+  var Portal = window.GESPortal, esc = Portal.esc;
+  var ICONS = {
+    camp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-6h6v6"/><path d="M9 10h.01M15 10h.01"/></svg>',
+    manpower: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2c2.8.3 5 2.6 5 5.8"/></svg>',
+    costing: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 15l3-3 2 2 4-5"/><path d="M8 8h.01"/></svg>'
+  };
+  var DENIED = { camp: 'Camp Management', manpower: 'GES Manpower', costing: 'Daily Costing & Stock' };
+
+  var denied = new URLSearchParams(location.search).get('denied');
+  if (denied) {
+    var n = document.getElementById('notice');
+    n.textContent = 'You do not have access to ' + (DENIED[denied] || 'that app') + '. Ask a portal admin to give you a role in it.';
+    n.style.display = 'block';
+  }
+
+  Portal.api('GET', '/api/me').then(function (me) {
+    var hour = new Date().getHours();
+    document.getElementById('hello').textContent = (hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening') + ', ' + (me.name || me.username);
+    document.getElementById('who').innerHTML =
+      (me.isAdmin ? '<a href="/admin">⚙ Users, backups &amp; activity</a>' : '') +
+      '<a href="/login?change=1&amp;self=1">🔑 Change password</a><button type="button" id="logout">Sign out</button>';
+    document.getElementById('logout').onclick = function () {
+      Portal.api('POST', '/api/logout', {}).catch(function () { }).then(function () { location.href = '/login'; });
+    };
+    document.getElementById('foot').textContent = 'Signed in as ' + me.username + (me.isAdmin ? ' (portal admin)' : '');
+    return Portal.api('GET', '/api/apps');
+  }).then(function (apps) {
+    if (!apps) return;
+    document.getElementById('apps').innerHTML = apps.map(function (a) {
+      var tag = a.role ? 'a' : 'div';
+      return '<' + tag + ' class="card' + (a.role ? '' : ' locked') + '" style="--c:' + esc(a.color) + '"' + (a.role ? ' href="' + esc(a.path) + '"' : ' aria-disabled="true"') + '>' +
+        '<div class="top"><div class="icon">' + (ICONS[a.id] || '') + '</div><h2>' + esc(a.name) + '</h2></div>' +
+        '<p>' + esc(a.description) + '</p>' +
+        '<div class="meta">' +
+          (a.role ? '<span class="chip r-' + esc(a.role) + '">' + Portal.ROLE_LABEL[a.role] + '</span>' : '<span class="chip" style="background:#f1f5f9;color:#64748b">No access</span>') +
+          (a.online ? '<span class="online"><i></i>' + a.online + ' online</span>' : '') +
+          '<span class="open">' + (a.role ? 'Open →' : 'Ask an admin') + '</span>' +
+        '</div></' + tag + '>';
+    }).join('');
+  }).catch(function (e) {
+    if (e && e.status === 401) return;
+    document.getElementById('apps').innerHTML = '<div class="empty">Cannot reach the server. <a href="/">Try again</a></div>';
+  });
+})();
+</script>
+</body>
+</html>

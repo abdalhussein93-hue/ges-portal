@@ -1,0 +1,11 @@
+.git
+.github
+.env
+node_modules
+seed
+data
+backups
+test
+tools
+scripts
+*.md

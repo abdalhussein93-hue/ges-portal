@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy to app-sources.json and point each entry at the desktop program (app.asar file or resources/app folder). Relative paths start at the project folder.",
+  "camp": "../resources/app.asar",
+  "manpower": "D:/system software/Staff List/2/pc/GES_Manpower_System_PORTABLE_Windows/GES Manpower System/resources/app.asar",
+  "costing": "D:/system software/Dailly Costing/SOFTWARE5/GES-Daily-Costing-PORTABLE-win64/GES-Daily-Costing-Portable/resources/app"
+}
