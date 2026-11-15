@@ -67,9 +67,27 @@
     if (doc.campList) campList = doc.campList;
     if (doc.appSeeds) appSeeds = doc.appSeeds;
   }
+  /**
+   * Every block in the block list must have its data ({rooms: {}}); the app's screens crash
+   * otherwise. Adds missing ones to `target` and returns their codes.
+   */
+  function missingBlocks(target, meta) {
+    var added = [];
+    Object.keys(meta || {}).forEach(function (bk) {
+      if (!target[bk] || typeof target[bk] !== 'object' || !target[bk].rooms) { target[bk] = { rooms: {} }; added.push(bk); }
+    });
+    return added;
+  }
+
   function loadDoc(doc) {
     applyDoc(P.clone(doc));
     S.base = P.clone(doc);
+    var fixed = missingBlocks(campData, BLOCKS_META_ALL);
+    if (fixed.length) {
+      console.warn('[camp] blocks without data were given empty room lists:', fixed.join(', '));
+      // Admins save the repair; for other roles it stays on this screen only (they may not change blocks).
+      if (S.role !== 'admin' && S.base.campData) missingBlocks(S.base.campData, BLOCKS_META_ALL);
+    }
     // Sections the server does not have yet: an admin's browser uploads them; other roles keep
     // the app's built-in defaults locally and never try to save them.
     if (S.role !== 'admin') {
@@ -175,7 +193,10 @@
     return !!(a && ae && a.contains(ae) && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName));
   }
   function rerender(keys, structure) {
-    try { if (structure || (keys && (keys.BLOCKS_META || keys.campList))) { buildCampSwitcher(); buildNav(); } } catch (e) { console.error(e); }
+    try {
+      if (structure || (keys && (keys.BLOCKS_META || keys.campList))) { buildCampSwitcher(); buildNav(); }
+      if (structure && typeof checkBackupReminder === 'function') checkBackupReminder(); // eslint-disable-line no-undef
+    } catch (e) { console.error(e); }
     clearTimeout(renderTimer);
     (function attempt() {
       if (busy()) { renderTimer = setTimeout(attempt, 3000); return; }
@@ -254,9 +275,17 @@
 
     window.initData = function () {
       if (S.doc) loadDoc(S.doc);
-      else { // empty server (admin only): start from the data that was built into the desktop program
-        campData = P.clone((S.seed && S.seed.campData) || {});
-        historyLog = (S.seed && S.seed.historyLog) || [];
+      else { // empty server (admin only)
+        if (S.seed && S.seed.campData) {
+          // start from the data that was built into the desktop program
+          campData = P.clone(S.seed.campData);
+          historyLog = S.seed.historyLog || [];
+        } else {
+          // no starting data on this server: every block exists, with no rooms yet
+          campData = {};
+          historyLog = [];
+        }
+        missingBlocks(campData, BLOCKS_META_ALL);
         S.base = {};
       }
       S.doc = null;
@@ -333,6 +362,28 @@
   }
 
   // ------------------------------------------------------------------ start
+  /**
+   * Camp has no data and the server has no starting data: let the admin import the desktop
+   * data (recommended) or start with an empty camp. Resolves when "empty camp" is chosen.
+   */
+  function chooseFirstSetup() {
+    Portal.cover('<div style="max-width:520px;text-align:left">' +
+      '<h2 style="margin:0 0 8px;font-size:20px;color:#0f172a">Camp Management has no data yet</h2>' +
+      '<p style="margin:0 0 6px">Recommended: import the data from the desktop program first. On the office PC, take ' +
+      '<b>%APPDATA%\\global-village-camp-management\\app_data.json</b> and upload it on the admin page under <b>Backups &amp; import</b>.</p>' +
+      '<p style="margin:0 0 4px;font-size:13px;color:#64748b">Or start with an empty camp (all blocks, no rooms) and add rooms yourself. ' +
+      'An import later replaces it; the empty camp is kept as a backup.</p>' +
+      '<a href="/admin">Import desktop data</a> &nbsp; ' +
+      '<button type="button" id="gvcStartEmpty" style="background:#fff;color:#1d4ed8;border:1.5px solid #1d4ed8">Start an empty camp</button>' +
+      '</div>');
+    return new Promise(function (resolve) {
+      document.getElementById('gvcStartEmpty').addEventListener('click', function () {
+        Portal.cover('Setting up an empty camp…');
+        resolve();
+      });
+    });
+  }
+
   function boot() {
     Portal.cover('Connecting to the server…');
     Portal.api('GET', '/api/me').then(function (me) {
@@ -344,7 +395,10 @@
       S.rev = d.rev; S.doc = d.doc;
       if (!d.doc) {
         if (S.role !== 'admin') { Portal.cover('Camp Management has not been set up yet.<br>An Admin of this app must open it first.<br><a href="/">Back to all apps</a>'); throw null; }
-        return Portal.api('GET', '/api/apps/' + APP + '/seed').then(function (seed) { S.seed = seed; }, function () { S.seed = null; });
+        return Portal.api('GET', '/api/apps/' + APP + '/seed').then(function (seed) { S.seed = seed; }, function () {
+          S.seed = null;
+          return chooseFirstSetup();
+        });
       }
     }).then(function () {
       install();
