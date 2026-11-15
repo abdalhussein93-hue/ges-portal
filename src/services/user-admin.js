@@ -130,6 +130,23 @@ class UserAdminService {
     return { username, password: usePassword === password ? null : usePassword };
   }
 
+  /**
+   * Emergency access: makes sure `username` exists, is enabled, is a portal admin and has `password`.
+   * @returns {Promise<'created'|'reset'>}
+   */
+  async forceAdmin(username, password) {
+    const hash = await hashPassword(password);
+    const existing = await this.users.find(username);
+    if (existing) {
+      await this.users.update(username, { isAdmin: true, disabled: false, apps: this.allAppsAdmin() });
+      await this.users.setPassword(username, hash, false);
+    } else {
+      await this.users.create({ username, name: 'Administrator', isAdmin: true, apps: this.allAppsAdmin(), passwordHash: hash, mustChange: false });
+    }
+    await this.audit.record({ username: 'system', action: 'emergency-admin', details: { target: username } });
+    return existing ? 'reset' : 'created';
+  }
+
   /** Command line recovery: new temporary password for an admin account (created if missing). */
   async resetAdmin(username) {
     const tempPassword = temporaryPassword();

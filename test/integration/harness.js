@@ -34,7 +34,7 @@ async function wipeDatabase(url) {
 function makeConfig(url, overrides = {}) {
   const seedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ges-seed-'));
   fs.writeFileSync(path.join(seedDir, 'camp.json'), JSON.stringify({ campData: campDoc().campData, historyLog: campDoc().historyLog }));
-  const config = loadConfig({ DATABASE_URL: url, ADMIN_PASSWORD, SEED_DIR: seedDir, DATABASE_POOL_SIZE: '5' });
+  const config = loadConfig({ DATABASE_URL: url, ADMIN_PASSWORD, SEED_DIR: seedDir, DATABASE_POOL_SIZE: '5', EMERGENCY_ADMIN: 'off' });
   return Object.assign(config, overrides, { documents: Object.assign({}, config.documents, overrides.documents || {}) });
 }
 

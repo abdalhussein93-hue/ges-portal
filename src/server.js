@@ -103,6 +103,12 @@ async function start(config = loadConfig(), { log = console.log, onListening = (
     log(first.password ? `   temporary password: ${first.password}` : '   password: the ADMIN_PASSWORD from your settings');
     log('==================================================\n');
   }
+  if (config.emergencyAdmin) {
+    const emergency = require('./emergency-admin');
+    const result = await c.userAdmin.forceAdmin(emergency.username, emergency.password);
+    log(`[start] WARNING: emergency admin "${emergency.username}" ${result} with the password from src/emergency-admin.js.` +
+      ' Set EMERGENCY_ADMIN=off once you can sign in.');
+  }
   await c.documents.init();
   handler = createApp(c);
   log('[start] ready.');

@@ -33,6 +33,8 @@ function loadConfig(env = process.env) {
       mustChange: env.ADMIN_MUST_CHANGE === undefined ? !env.ADMIN_PASSWORD : bool(env.ADMIN_MUST_CHANGE),
     },
     maxUploadBytes: num(env.MAX_UPLOAD_MB, 80) * 1024 * 1024,
+    // temporary emergency admin (src/emergency-admin.js); EMERGENCY_ADMIN=off turns it off
+    emergencyAdmin: !/^(0|false|no|off)$/i.test(String(env.EMERGENCY_ADMIN || '')),
     // how long a new server waits for the previous one to stop (deploys)
     lockWaitSeconds: num(env.LOCK_WAIT_SECONDS, 600),
   };
