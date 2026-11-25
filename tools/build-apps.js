@@ -42,9 +42,51 @@ function buildCamp(html, seed) {
   e.replaceOnce('start-up end', 'setInterval(()=>refreshData(true),60000);\n})();', 'setInterval(()=>refreshData(true),60000);\n};');
   e.replaceOnce('refresh reads the server', 'if(!(window.desktopStorage&&window.desktopStorage.isDesktop)&&!unsaved){',
     'if(false){ // web version: the live server keeps data current');
-  e.insertBefore('portal scripts', '</body>', script('/patch.js') + script('/shared/portal-bar.js') + script('/shared/camp-sync.js'), { last: true });
+  addApprovalsAndMovement(e);
+  e.insertBefore('portal scripts', '</body>',
+    script('/patch.js') + script('/shared/portal-bar.js') + script('/shared/camp-approvals.js') + script('/shared/camp-sync.js'), { last: true });
   e.mustNotContain('no written-in password', 'ABD@');
   return e.html;
+}
+
+/**
+ * Operator -> Admin approval workflow and Movement Summary (code in public/shared/camp-approvals.js).
+ * The hook positions come from the version made for the single-file app (CAMP_MANGMENT.html).
+ */
+function addApprovalsAndMovement(e) {
+  e.insertBefore('approvals: styles', '</head>', '<link rel="stylesheet" href="/shared/camp-approvals.css">\n');
+  // menu, top bar, pages, bed window
+  const dashNav = `<div class="nav-item active" onclick="showPage('dashboard',this)"><i class="ti ti-layout-dashboard"></i> Dashboard</div>`;
+  e.replaceOnce('menu: Approvals', dashNav, dashNav + `\n    <div class="nav-item" id="navApprovals" onclick="showPage('approvals',this)"><i class="ti ti-checklist"></i> Approvals <span id="apNavBadge" class="ap-nav-badge" style="display:none">0</span></div>`);
+  const logNav = `<div class="nav-item" onclick="showPage('history',this)"><i class="ti ti-history"></i> Check In/Out Log</div>`;
+  e.replaceOnce('menu: Movement Summary', logNav, logNav + `\n    <div class="nav-item" onclick="showPage('movement',this)"><i class="ti ti-arrows-exchange"></i> Movement Summary</div>`);
+  e.replaceOnce('top bar: Approvals button', '<button class="btn btn-sm" onclick="openNotifPanel()" id="notifBtn"',
+    `<button class="btn btn-sm" onclick="openApprovals()" id="apBtn" title="Change approvals" style="background:var(--purple-bg);color:var(--purple);border:1.5px solid #c4b5fd;position:relative"><i class="ti ti-checklist"></i> Approvals<span id="apBadge" class="ap-badge" style="display:none">0</span></button>\n    <button class="btn btn-sm" onclick="openNotifPanel()" id="notifBtn"`);
+  const lastPage = '<div class="page" id="page-vacantRooms"></div>';
+  e.replaceOnce('pages', lastPage, lastPage + '\n    <div class="page" id="page-approvals"></div>\n    <div class="page" id="page-movement"></div>');
+  const sub = '<div class="modal-sub" id="bedModalSub"></div>';
+  e.replaceOnce('bed window: note area', sub, sub + '\n    <div id="bmApNote"></div>');
+  e.replaceOnce('page titles', "vacantRooms:'100% Vacant Rooms'};", "vacantRooms:'100% Vacant Rooms',approvals:'Change Approvals',movement:'Movement Summary'};");
+  e.replaceOnce('page renderers', 'vacantRooms:renderVacantRooms})[name]?.();', 'vacantRooms:renderVacantRooms,approvals:renderApprovals,movement:renderMovement})[name]?.();');
+
+  // hooks inside existing screens: [label, text before, text after, inserted, how many places]
+  const HOOKS = [
+    ['dashboard: approval banner', 'et h=colorLegend();\n  h+=saveBtnHtml();\n  h+=', '`<div class="stats-grid">\n    <div class="sta', 'apDashBanner();\n  h+=', 1],
+    ['dashboard: occupied pending', '</div><div class="stat-sub">${pct}% occupancy', '</div></div>\n    <div class="stat-card" style', "${apPendSub('occ')}", 1],
+    ['dashboard: vacant pending', 'v><div class="stat-sub">${100-pct}% available', '</div></div>\n    <div class="stat-card" style', "${apPendSub('vac')}", 1],
+    ['dashboard: reserved pending', '.res}</div><div class="stat-sub">Beds on hold', '</div></div>\n  </div>\n  <div class="sec-title', "${apPendSub('res')}", 1],
+    ['dashboard: block chip', ' <div class="block-name">${bk}</div>\n        ', '<div style="font-size:10px;font-weight:700;co', '${apBlockChip(bk)}\n        ', 1],
+    ['block page: pending note', "-green)';\n  let h=colorLegend()+saveBtnHtml()", ';\n  h+=`<div class="bk-summary">\n    <div cla', '+apBlockNote(bk)', 1],
+    ['bed: pending outline (occupied)', '     return `<div class="bed-btn bed-occupied', `" title="Name:\${b.name||'—'} | Co:\${b.company`, '${apBedCls(bk,rid,i)}', 1],
+    ['bed: pending outline (reserved)', '     return `<div class="bed-btn bed-reserved', `" title="Reserved: \${b.company||'—'}" onclick`, '${apBedCls(bk,rid,i)}', 1],
+    ['bed: pending outline (vacant)', '\n      return `<div class="bed-btn bed-vacant', '" title="Vacant bed ${i+1}" onclick="openBedM', '${apBedCls(bk,rid,i)}', 1],
+    ['bed window: approval note', 'y}x1 | Status: ${b.status.toUpperCase()}`;\n  ', "document.getElementById('bm_name').value=b.na", 'apBedModalNote(bk,rid,bi);\n  ', 2],
+    ['transfer: no "complete" alert when queued', "lassList.add('hidden');\n  renderBlock(bk);\n  ", "alert(`✓ Transfer complete! ${oldBed.name||'R", 'if(apJustQueued())return;\n  ', 1],
+    ['quick entry: queued message', "ntent=`✓ ${rid}: ${n} beds${co?' — '+co:''}`;", '\n}\n', "if(apJustQueued()){msg.style.color='var(--purple)';msg.textContent=`⏳ ${rid}: ${n} beds${co?' — '+co:''} — sent to Admin for approval`;}", 1],
+    ['deleted log record is kept', "{if(!isAdmin()){showPwModal('admin');return;}", 'historyLog=historyLog.filter(e=>e.id!==id);sa', 'mvRecordDeletedLog(historyLog.find(e=>e.id===id));', 1],
+    ['settings: approval card', 'n-bottom:16px">Settings</div>`+saveBtnHtml()+', '`\n  <div class="card" style="max-width:440px;', 'apSettingsCard()+', 1],
+  ];
+  for (const [label, before, after, insert, count] of HOOKS) e.insertBetween(label, before, after, insert, count);
 }
 
 /** GES Manpower System */

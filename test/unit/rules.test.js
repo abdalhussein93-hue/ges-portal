@@ -60,7 +60,8 @@ test('cleanOps cleans values and reports it', () => {
   assert.ok(r.changed);
 });
 
-test('camp: operator may check in/out, edit room size, bathrooms, housekeeping', () => {
+test('camp: with approval off, operator may check in/out, edit room size, bathrooms, housekeeping', () => {
+  const ctx = { doc: { approvalCfg: { enabled: false } } };
   const ok = [
     { o: 's', p: ['campData', 'A', 'rooms', 'A-1', 'beds', 0, 'name'], v: 'x' },
     { o: 'ai', p: ['historyLog'], v: { id: 'n' } },
@@ -68,7 +69,57 @@ test('camp: operator may check in/out, edit room size, bathrooms, housekeeping',
     { o: 's', p: ['campData', '_bathrooms', 'A'], v: [] },
     { o: 's', p: ['campData', '_hkc', 'Global Village'], v: {} },
   ];
-  for (const op of ok) assert.equal(camp.checkPermission('operator', op), null, JSON.stringify(op.p));
+  for (const op of ok) assert.equal(camp.checkPermission('operator', op, ctx), null, JSON.stringify(op.p));
+});
+
+test('camp: with approval on (the default), operator bed changes are refused; other work still allowed', () => {
+  const bed = { o: 's', p: ['campData', 'A', 'rooms', 'A-1', 'beds', 0, 'name'], v: 'x' };
+  assert.match(camp.checkPermission('operator', bed, { doc: {} }), /Admin approval is switched on/);
+  assert.match(camp.checkPermission('operator', bed, { doc: { approvalCfg: { enabled: true } } }), /Admin approval/);
+  assert.equal(camp.checkPermission('admin', bed, { doc: {} }), null);
+  for (const op of [
+    { o: 's', p: ['campData', 'A', 'rooms', 'A-1', 'L'], v: 4 },
+    { o: 's', p: ['campData', '_bathrooms', 'A'], v: [] },
+    { o: 'ai', p: ['historyLog'], v: { id: 'n' } },
+  ]) assert.equal(camp.checkPermission('operator', op, { doc: {} }), null, JSON.stringify(op.p));
+});
+
+test('camp: operators send requests and may only withdraw / mark as read their own', () => {
+  const doc = { approvals: [{ id: 'R1', byUser: 'op.one', status: 'pending' }, { id: 'R2', byUser: 'op.two', status: 'approved' }] };
+  const me = { doc, user: { username: 'op.one' } };
+  const P = camp.checkPermission;
+  assert.equal(P('operator', { o: 'ai', p: ['approvals'], v: { id: 'R3' } }, me), null, 'send a request');
+  assert.equal(P('operator', { o: 's', p: ['approvals', { id: 'R1' }, 'status'], v: 'withdrawn' }, me), null, 'withdraw own');
+  assert.equal(P('operator', { o: 's', p: ['approvals', { id: 'R1' }, 'decidedAt'], v: 'x' }, me), null);
+  assert.ok(P('operator', { o: 's', p: ['approvals', { id: 'R1' }, 'status'], v: 'approved' }, me), 'cannot approve own');
+  assert.ok(P('operator', { o: 's', p: ['approvals', { id: 'R2' }, 'seen'], v: true }, me), "cannot touch another person's request");
+  assert.ok(P('operator', { o: 'ad', p: ['approvals'], id: 'R1' }, me), 'cannot delete requests');
+  assert.ok(P('operator', { o: 's', p: ['approvals'], v: [] }, me), 'cannot replace the list');
+  assert.ok(P('operator', { o: 's', p: ['approvalCfg'], v: { enabled: false } }, me), 'cannot switch approval off');
+  assert.ok(P('operator', { o: 'ai', p: ['deletedLog'], v: { id: 'x' } }, me), 'cannot add deleted records');
+  assert.ok(P('viewer', { o: 'ai', p: ['approvals'], v: { id: 'R4' } }, me), 'viewers cannot send requests');
+  const other = { doc: { approvals: [{ id: 'R2', byUser: 'op.two', status: 'approved', seen: false }] }, user: { username: 'op.two' } };
+  assert.equal(P('operator', { o: 's', p: ['approvals', { id: 'R2' }, 'seen'], v: true }, other), null, 'mark own decision as read');
+});
+
+test('camp: the server writes the real account onto requests and decisions', () => {
+  const op = { o: 'ai', p: ['approvals'], v: { id: 'R9', by: 'Someone Else', byUser: 'fake', status: 'approved', decidedBy: 'x', changes: [] }, at: 0, after: null };
+  const r = camp.prepareOps('operator', { username: 'op.one', name: 'Operator One' }, [op], { approvals: [] });
+  assert.equal(r.ops.length, 1);
+  assert.deepEqual([r.ops[0].v.by, r.ops[0].v.byUser, r.ops[0].v.status, r.ops[0].v.decidedBy], ['Operator One', 'op.one', 'pending', undefined]);
+  assert.equal(r.changed, true);
+  const a = camp.prepareOps('admin', { username: 'admin', name: 'Administrator' },
+    [{ o: 's', p: ['approvals', { id: 'R9' }, 'status'], v: 'approved' }, { o: 's', p: ['approvals', { id: 'R9' }, 'decidedBy'], v: 'Administrator' }], { approvals: [] });
+  assert.deepEqual(a.ops[a.ops.length - 1], { o: 's', p: ['approvals', { id: 'R9' }, 'decidedBy'], v: 'Administrator' });
+  assert.equal(a.changed, false);
+});
+
+test('camp: the approvals list is created on the server the first time it is needed', () => {
+  const r = camp.prepareOps('operator', { username: 'op.one' }, [{ o: 'ai', p: ['approvals'], v: { id: 'R1' }, at: 0, after: null }], {});
+  assert.deepEqual(r.ops[0], { o: 's', p: ['approvals'], v: [] });
+  const doc = {};
+  require('../../src/domain/patch').apply(doc, r.ops);
+  assert.equal(doc.approvals.length, 1);
 });
 
 test('camp: operator may not change structure, lists, money or delete records', () => {

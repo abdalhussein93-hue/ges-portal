@@ -17,6 +17,21 @@ class HtmlEditor {
     return this;
   }
 
+  /** Replaces every occurrence of `find`, which must occur exactly `count` times. */
+  replaceCount(label, find, replacement, count) {
+    const found = this.html.split(find).length - 1;
+    if (found !== count) this.fail(label, `expected ${count} matches, found ${found}`);
+    this.html = this.html.split(find).join(replacement);
+    return this;
+  }
+
+  /**
+   * Inserts `insert` between `before` and `after` (which must appear together `count` times).
+   */
+  insertBetween(label, before, after, insert, count = 1) {
+    return this.replaceCount(label, before + after, before + insert + after, count);
+  }
+
   /** Inserts `snippet` right before the first occurrence of `marker`. */
   insertBefore(label, marker, snippet, { last = false } = {}) {
     const i = last ? this.html.lastIndexOf(marker) : this.html.indexOf(marker);

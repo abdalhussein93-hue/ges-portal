@@ -16,6 +16,8 @@ function campDoc() {
     foodCategories: ['Senior', 'Worker'],
     campList: ['Global Village'],
     appSeeds: ['alfarah_v1'],
+    // most tests check direct Operator changes; approval tests switch this on
+    approvalCfg: { enabled: false },
   };
 }
 

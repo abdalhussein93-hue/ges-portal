@@ -102,6 +102,12 @@ test('a different record with an already used id is reported as a conflict', () 
   assert.equal(none.length, 0, 'an identical repeat is not a conflict');
 });
 
+test('adding a record to a list that does not exist is reported, not silently skipped', () => {
+  const conflicts = [];
+  Patch.apply({}, [{ o: 'ai', p: ['missing'], v: { id: 'x' }, at: 0, after: null }], conflicts);
+  assert.equal(conflicts.length, 1);
+});
+
 test('values are copied, not shared', () => {
   const doc = { a: {} };
   const v = { x: 1 };

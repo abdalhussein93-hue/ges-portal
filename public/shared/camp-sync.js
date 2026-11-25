@@ -12,7 +12,8 @@
   'use strict';
   var P = window.GVCPatch, Portal = window.GESPortal;
   var APP = 'camp';
-  var DOC_KEYS = ['campData', 'companies', 'historyLog', 'nationalities', 'BLOCKS_META', 'foodCategories', 'campList', 'appSeeds'];
+  var DOC_KEYS = ['campData', 'companies', 'historyLog', 'nationalities', 'BLOCKS_META', 'foodCategories', 'campList', 'appSeeds',
+    'approvals', 'approvalCfg', 'deletedLog'];
   var RETRY_MS = 10000, CATCH_UP_EVERY_MS = 60000;
 
   // The app never declares historyLog (it becomes a global on first assignment); create it.
@@ -31,11 +32,13 @@
   // ------------------------------------------------------------------ the app's data
   /* global campData, companies, historyLog, nationalities, BLOCKS_META_ALL, foodCategories, campList, appSeeds,
      unsaved, accessLevel, pwCallback, setSaveBar, refreshData, buildCampSwitcher, buildNav, updateNotifBadge,
-     closePwModal, canEdit, renderProfit */
+     closePwModal, canEdit, renderProfit, isAdmin,
+     approvalQueue, approvalCfg, mvDeletedLog, captureOperatorChanges, apOnLogin, apRefreshUI, renderApprovals, mvRun */
   function snapshot() {
     return {
       campData: campData, companies: companies, historyLog: historyLog, nationalities: nationalities,
-      BLOCKS_META: BLOCKS_META_ALL, foodCategories: foodCategories, campList: campList, appSeeds: appSeeds
+      BLOCKS_META: BLOCKS_META_ALL, foodCategories: foodCategories, campList: campList, appSeeds: appSeeds,
+      approvals: approvalQueue, approvalCfg: approvalCfg, deletedLog: mvDeletedLog
     };
   }
   function setTop(k, v) {
@@ -48,6 +51,9 @@
       case 'foodCategories': foodCategories = v; break;
       case 'campList': campList = v; break;
       case 'appSeeds': appSeeds = v; break;
+      case 'approvals': approvalQueue = v; break;
+      case 'approvalCfg': approvalCfg = v; break;
+      case 'deletedLog': mvDeletedLog = v; break;
     }
   }
   /** Applies changes to the data the screens use, in place (open forms keep working). */
@@ -66,6 +72,9 @@
     if (doc.BLOCKS_META) BLOCKS_META_ALL = doc.BLOCKS_META;
     if (doc.campList) campList = doc.campList;
     if (doc.appSeeds) appSeeds = doc.appSeeds;
+    approvalQueue = Array.isArray(doc.approvals) ? doc.approvals : [];
+    approvalCfg = doc.approvalCfg || { enabled: true };
+    mvDeletedLog = Array.isArray(doc.deletedLog) ? doc.deletedLog : [];
   }
   /**
    * Every block in the block list must have its data ({rooms: {}}); the app's screens crash
@@ -200,7 +209,14 @@
     clearTimeout(renderTimer);
     (function attempt() {
       if (busy()) { renderTimer = setTimeout(attempt, 3000); return; }
-      try { refreshData(true); if (typeof updateNotifBadge === 'function') updateNotifBadge(); } catch (e) { console.error(e); }
+      try {
+        refreshData(true);
+        if (typeof updateNotifBadge === 'function') updateNotifBadge();
+        if (typeof apRefreshUI === 'function') apRefreshUI();
+        var a = document.querySelector('.page.active');
+        if (a && a.id === 'page-approvals' && typeof renderApprovals === 'function') renderApprovals();
+        if (a && a.id === 'page-movement' && typeof mvRun === 'function') mvRun();
+      } catch (e) { console.error(e); }
     })();
   }
 
@@ -241,6 +257,8 @@
   function roleLevel(role) { return role === 'admin' ? 'admin' : role === 'operator' ? 'operator' : 'none'; }
   function setAccess(level) {
     accessLevel = level;
+    // approval workflow: notifications on unlock / lock (once the data is loaded)
+    if (S.ready && typeof apOnLogin === 'function') setTimeout(function () { try { apOnLogin(level); } catch (e) { console.error(e); } }, 0);
     var lb = document.getElementById('lockBtn'), ls = document.getElementById('lockStatus'), ll = document.getElementById('lockLabel');
     if (!lb) return;
     if (level === 'admin') {
@@ -264,7 +282,30 @@
 
   // ------------------------------------------------------------------ replace the app's functions
   function install() {
-    window.saveData = function () { saveData(); };
+    // For the approval workflow: the signed-in account and the data the server has confirmed
+    window.GESCamp = { me: function () { return S.me; }, base: function () { return S.base; } };
+
+    window.saveData = function () {
+      // an Operator's bed changes become an approval request (beds go back to the confirmed state)
+      if (typeof captureOperatorChanges === 'function') {
+        try { captureOperatorChanges(); } catch (e) { console.error('Approval capture failed:', e); }
+      }
+      saveData();
+    };
+
+    // Restoring a backup replaces data: Admins only (the server enforces it as well)
+    ['restoreBackup', 'importCamp'].forEach(function (fn) {
+      var orig = window[fn];
+      if (typeof orig !== 'function') return;
+      window[fn] = function (inp) {
+        if (!isAdmin()) {
+          if (inp && 'value' in inp) inp.value = '';
+          alert('Only an Admin of Camp Management can restore a backup.');
+          return;
+        }
+        return orig.apply(this, arguments);
+      };
+    });
 
     var origMarkUnsaved = window.markUnsaved, autoTimer = null;
     window.markUnsaved = function () {
@@ -406,6 +447,7 @@
       return window.__gvcStart();
     }).then(function () {
       if (S.base && !Object.keys(S.base).length) saveData(); // first setup: upload the starting data
+      if (typeof apOnLogin === 'function') { try { apOnLogin(roleLevel(S.role)); } catch (e) { console.error(e); } }
       Portal.mount({ appId: APP, me: S.me });
       Portal.onBeforeLeave(whenSaved);
       connect();

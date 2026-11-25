@@ -9,7 +9,8 @@
  *   seedFile                                optional starting data file name in seed/
  *   files                                   files the app may store: {name: {maxBytes, writeRole}}
  *   isRootKey(key)                          is this a valid top-level section of the document?
- *   checkPermission(role, op)               null if allowed, else a message for the user
+ *   checkPermission(role, op, {doc, user})  null if allowed, else a message for the user
+ *   prepareOps(role, user, ops, doc)        optional: adjust ops before saving -> {ops, changed}
  *   filterDoc(doc, role) / filterOps(ops, role)   remove what a role may not see
  *   normalise(doc)                          fix data in place after a change; returns the top-level
  *                                           sections it changed (empty array = nothing)

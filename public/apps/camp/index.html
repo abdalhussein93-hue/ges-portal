@@ -256,6 +256,7 @@ table.dtbl td.hk-top{vertical-align:top}
 .hk-res{padding:2px 0;border-bottom:1px dashed var(--border)}.hk-res:last-child{border-bottom:none}
 @media (max-width:1100px){.hk-grid{grid-template-columns:1fr}}
 </style>
+<link rel="stylesheet" href="/shared/camp-approvals.css">
 </head>
 <body>
 <div class="app">
@@ -278,6 +279,7 @@ table.dtbl td.hk-top{vertical-align:top}
   <nav class="nav">
     <div class="nav-sec">Main</div>
     <div class="nav-item active" onclick="showPage('dashboard',this)"><i class="ti ti-layout-dashboard"></i> Dashboard</div>
+    <div class="nav-item" id="navApprovals" onclick="showPage('approvals',this)"><i class="ti ti-checklist"></i> Approvals <span id="apNavBadge" class="ap-nav-badge" style="display:none">0</span></div>
     <div class="nav-item" onclick="showPage('summary',this)"><i class="ti ti-table"></i> Summary Tables</div>
     <div class="nav-item" onclick="showPage('billing',this)"><i class="ti ti-report-money"></i> Company Wise</div>
     <div class="nav-item" onclick="showPage('voReport',this)"><i class="ti ti-door"></i> Vacant / Occupied</div>
@@ -292,6 +294,7 @@ table.dtbl td.hk-top{vertical-align:top}
     <div class="nav-sec">Records</div>
     <div class="nav-item" onclick="showPage('duplicates',this)"><i class="ti ti-users-group"></i> Duplicate Residents</div>
     <div class="nav-item" onclick="showPage('history',this)"><i class="ti ti-history"></i> Check In/Out Log</div>
+    <div class="nav-item" onclick="showPage('movement',this)"><i class="ti ti-arrows-exchange"></i> Movement Summary</div>
     <div class="nav-item" onclick="showPage('mandays',this)"><i class="ti ti-calendar-stats"></i> Man-Days Report</div>
     <div class="nav-sec">Facilities</div>
     <div class="nav-item" onclick="showPage('bathrooms',this)"><i class="ti ti-droplet"></i> Bathrooms</div>
@@ -315,6 +318,7 @@ table.dtbl td.hk-top{vertical-align:top}
     <button class="btn btn-ghost btn-sm" onclick="refreshData()"><i class="ti ti-refresh"></i> Refresh</button>
     <button class="btn btn-sm" style="background:#16a34a;color:#fff;border:1.5px solid #15803d" onclick="exportCurrentPage()" title="Export this page to Excel"><i class="ti ti-file-spreadsheet"></i> Excel</button>
     <button class="btn btn-amber btn-sm" onclick="backupNow()"><i class="ti ti-download"></i> Backup</button>
+    <button class="btn btn-sm" onclick="openApprovals()" id="apBtn" title="Change approvals" style="background:var(--purple-bg);color:var(--purple);border:1.5px solid #c4b5fd;position:relative"><i class="ti ti-checklist"></i> Approvals<span id="apBadge" class="ap-badge" style="display:none">0</span></button>
     <button class="btn btn-sm" onclick="openNotifPanel()" id="notifBtn" style="background:var(--orange-bg);color:var(--orange);border:1.5px solid var(--orange);position:relative"><i class="ti ti-bell"></i><span id="notifBadge" style="display:none;position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center" id="notifBadge">0</span></button>
     <button class="btn btn-sm" id="lockBtn" onclick="toggleLock()" style="background:var(--blue-light);color:var(--blue);border:1.5px solid var(--border2)"><i class="ti ti-lock"></i> Unlock</button>
   </div>
@@ -345,6 +349,8 @@ table.dtbl td.hk-top{vertical-align:top}
     <div class="page" id="page-settings"></div>
     <div class="page" id="page-profit"></div>
     <div class="page" id="page-vacantRooms"></div>
+    <div class="page" id="page-approvals"></div>
+    <div class="page" id="page-movement"></div>
   </div>
 </div>
 </div>
@@ -356,10 +362,6 @@ table.dtbl td.hk-top{vertical-align:top}
     <div class="modal-sub" id="pwModalSub">Enter password to continue</div>
     <input type="password" id="pwInput" class="form-ctrl" placeholder="Password..." onkeydown="if(event.key==='Enter')checkPw()" style="margin-bottom:10px">
     <div class="modal-err" id="pwErr">Incorrect password. Try again.</div>
-    <div style="background:var(--blue-light);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:var(--blue2)">
-      <i class="ti ti-phone" style="font-size:14px"></i> For assistance call <b>Mr. Abdulrhman</b><br>
-      <a href="tel:00971506071444" style="color:var(--blue);font-weight:700;text-decoration:none">📞 00971506071444</a>
-    </div>
     <div class="modal-btns">
       <button class="btn btn-ghost btn-sm" onclick="closePwModal()">Cancel</button>
       <button class="btn btn-blue btn-sm" onclick="checkPw()">Unlock</button>
@@ -372,6 +374,7 @@ table.dtbl td.hk-top{vertical-align:top}
   <div class="modal">
     <h3 id="bedModalTitle"></h3>
     <div class="modal-sub" id="bedModalSub"></div>
+    <div id="bmApNote"></div>
     <div class="form-grid2">
       <div class="form-row"><label class="form-lbl">Full Name</label><input id="bm_name" class="form-ctrl" placeholder="Resident name"></div>
       <div class="form-row"><label class="form-lbl">Badge Number</label><input id="bm_badge" class="form-ctrl" placeholder="Badge / ID"></div>
@@ -651,7 +654,7 @@ function saveData(){
     if(e&&(e.name==='QuotaExceededError'||e.code===22||e.code===1014)){
       setSaveBar('err');
       console.error('Save failed (storage full):',e);
-      alert('⚠️ STORAGE FULL — your latest changes could NOT be saved.\n\nYour data is safe for now, but the browser storage is full. To protect your records:\n\n1. Go to Backup & Restore and click "Download Backup" NOW.\n2. Keep that backup file safe.\n\nNo history has been deleted. Contact Mr. Abdulrhman if you need help clearing space.');
+      alert('⚠️ STORAGE FULL — your latest changes could NOT be saved.\n\nYour data is safe for now, but the browser storage is full. To protect your records:\n\n1. Go to Backup & Restore and click "Download Backup" NOW.\n2. Keep that backup file safe.\n\nNo history has been deleted. Contact the system administrator if you need help clearing space.');
       return;
     }
     setSaveBar('err');
@@ -746,9 +749,9 @@ function showPage(name,el){
   if(el)el.classList.add('active');
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const pg=document.getElementById('page-'+name);if(pg)pg.classList.add('active');
-  const T={dashboard:'Dashboard',summary:'Summary Tables',billing:'Company Wise',voReport:'Vacant / Occupied Report',wasted:'Wasted Beds Report',food:'Food Categories',roomsize:'Room Capacity (m²)',quickentry:'Quick Entry',cosearch:'Quick Search',duplicates:'Duplicate Residents',history:'Check In/Out Log',mandays:'Man-Days Report',bathrooms:'Bathroom Management',housekeeping:'Housekeeping Duty Roster',companies:'Company Manager',backup:'Backup & Restore',export:'Export Data',settings:'Settings',profit:'📊 Location Profit',vacantRooms:'100% Vacant Rooms'};
+  const T={dashboard:'Dashboard',summary:'Summary Tables',billing:'Company Wise',voReport:'Vacant / Occupied Report',wasted:'Wasted Beds Report',food:'Food Categories',roomsize:'Room Capacity (m²)',quickentry:'Quick Entry',cosearch:'Quick Search',duplicates:'Duplicate Residents',history:'Check In/Out Log',mandays:'Man-Days Report',bathrooms:'Bathroom Management',housekeeping:'Housekeeping Duty Roster',companies:'Company Manager',backup:'Backup & Restore',export:'Export Data',settings:'Settings',profit:'📊 Location Profit',vacantRooms:'100% Vacant Rooms',approvals:'Change Approvals',movement:'Movement Summary'};
   document.getElementById('pageTitle').textContent=(T[name]||name)+' — '+currentCamp;
-  ({dashboard:renderDashboard,summary:renderSummary,billing:renderBilling,voReport:renderVOReport,quickentry:renderQuickEntry,cosearch:renderCoSearch,duplicates:renderDuplicates,history:renderHistory,mandays:renderMandays,bathrooms:renderBathrooms,housekeeping:renderHousekeeping,companies:renderCoManager,backup:renderBackup,export:renderExport,settings:renderSettings,profit:renderProfit,wasted:renderWasted,food:renderFood,roomsize:renderRoomSize,vacantRooms:renderVacantRooms})[name]?.();
+  ({dashboard:renderDashboard,summary:renderSummary,billing:renderBilling,voReport:renderVOReport,quickentry:renderQuickEntry,cosearch:renderCoSearch,duplicates:renderDuplicates,history:renderHistory,mandays:renderMandays,bathrooms:renderBathrooms,housekeeping:renderHousekeeping,companies:renderCoManager,backup:renderBackup,export:renderExport,settings:renderSettings,profit:renderProfit,wasted:renderWasted,food:renderFood,roomsize:renderRoomSize,vacantRooms:renderVacantRooms,approvals:renderApprovals,movement:renderMovement})[name]?.();
 }
 function showBlockPage(bk,el){
   currentBlock=bk;currentTab='rooms';
@@ -769,11 +772,12 @@ function renderDashboard(){
   const pct=t.cap>0?Math.round(t.occ/t.cap*100):0;
   let h=colorLegend();
   h+=saveBtnHtml();
+  h+=apDashBanner();
   h+=`<div class="stats-grid">
     <div class="stat-card" style="--c:var(--blue)"><div class="stat-icon" style="background:var(--blue-light)"><i class="ti ti-bed" style="color:var(--blue)"></i></div><div class="stat-lbl">Total Capacity</div><div class="stat-val" style="color:var(--blue)">${t.cap}</div><div class="stat-sub">All beds in camp</div></div>
-    <div class="stat-card" style="--c:var(--red)"><div class="stat-icon" style="background:var(--red-bg)"><i class="ti ti-user-check" style="color:var(--red)"></i></div><div class="stat-lbl">Occupied</div><div class="stat-val" style="color:var(--red)">${t.occ}</div><div class="stat-sub">${pct}% occupancy</div></div>
-    <div class="stat-card" style="--c:var(--green)"><div class="stat-icon" style="background:var(--green-bg)"><i class="ti ti-door-enter" style="color:var(--green)"></i></div><div class="stat-lbl">Vacant</div><div class="stat-val" style="color:var(--green)">${t.vac}</div><div class="stat-sub">${100-pct}% available</div></div>
-    <div class="stat-card" style="--c:var(--orange)"><div class="stat-icon" style="background:var(--orange-bg)"><i class="ti ti-bookmark" style="color:var(--orange)"></i></div><div class="stat-lbl">Reserved</div><div class="stat-val" style="color:var(--orange)">${t.res}</div><div class="stat-sub">Beds on hold</div></div>
+    <div class="stat-card" style="--c:var(--red)"><div class="stat-icon" style="background:var(--red-bg)"><i class="ti ti-user-check" style="color:var(--red)"></i></div><div class="stat-lbl">Occupied</div><div class="stat-val" style="color:var(--red)">${t.occ}</div><div class="stat-sub">${pct}% occupancy${apPendSub('occ')}</div></div>
+    <div class="stat-card" style="--c:var(--green)"><div class="stat-icon" style="background:var(--green-bg)"><i class="ti ti-door-enter" style="color:var(--green)"></i></div><div class="stat-lbl">Vacant</div><div class="stat-val" style="color:var(--green)">${t.vac}</div><div class="stat-sub">${100-pct}% available${apPendSub('vac')}</div></div>
+    <div class="stat-card" style="--c:var(--orange)"><div class="stat-icon" style="background:var(--orange-bg)"><i class="ti ti-bookmark" style="color:var(--orange)"></i></div><div class="stat-lbl">Reserved</div><div class="stat-val" style="color:var(--orange)">${t.res}</div><div class="stat-sub">Beds on hold${apPendSub('res')}</div></div>
   </div>
   <div class="sec-title">Block Overview</div>
   <div class="blocks-grid">`;
@@ -793,6 +797,7 @@ function renderDashboard(){
     h+=`<div class="block-card" onclick="showBlockPage('${bk}')">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div class="block-name">${bk}</div>
+        ${apBlockChip(bk)}
         <div style="font-size:10px;font-weight:700;color:${c};background:${p>85?'var(--red-bg)':p>50?'var(--amber-bg)':'var(--green-bg)'};padding:2px 6px;border-radius:10px">${p}%</div>
       </div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${BLOCKS_META[bk].name}</div>
@@ -1051,7 +1056,7 @@ function renderBlock(bk){
   const s=getBlockStats(bk);
   const pct=s.cap>0?Math.round(s.occ/s.cap*100):0;
   const c=pct>85?'var(--red)':pct>50?'var(--amber)':'var(--green)';
-  let h=colorLegend()+saveBtnHtml();
+  let h=colorLegend()+saveBtnHtml()+apBlockNote(bk);
   h+=`<div class="bk-summary">
     <div class="bks-card"><div class="bks-val" style="color:var(--blue)">${s.cap}</div><div class="bks-lbl">Capacity</div></div>
     <div class="bks-card"><div class="bks-val" style="color:var(--red)">${s.occ}</div><div class="bks-lbl">Occupied</div></div>
@@ -1163,12 +1168,12 @@ function renderRoomCard(bk,rid,r){
   const bedsHtml=r.beds.map((b,i)=>{
     if(b.status==='occupied'){
       const label=(b.company||b.name||'Occ').substring(0,7);
-      return `<div class="bed-btn bed-occupied" title="Name:${b.name||'—'} | Co:${b.company||'—'} | Badge:${b.badge||'—'} | In:${b.checkin||'—'}" onclick="openBedModal('${bk}','${rid}',${i})">${label}</div>`;
+      return `<div class="bed-btn bed-occupied${apBedCls(bk,rid,i)}" title="Name:${b.name||'—'} | Co:${b.company||'—'} | Badge:${b.badge||'—'} | In:${b.checkin||'—'}" onclick="openBedModal('${bk}','${rid}',${i})">${label}</div>`;
     }else if(b.status==='reserved'){
       const label=(b.company||'Res').substring(0,7);
-      return `<div class="bed-btn bed-reserved" title="Reserved: ${b.company||'—'}" onclick="openBedModal('${bk}','${rid}',${i})">${label}</div>`;
+      return `<div class="bed-btn bed-reserved${apBedCls(bk,rid,i)}" title="Reserved: ${b.company||'—'}" onclick="openBedModal('${bk}','${rid}',${i})">${label}</div>`;
     }else{
-      return `<div class="bed-btn bed-vacant" title="Vacant bed ${i+1}" onclick="openBedModal('${bk}','${rid}',${i})">${i+1}</div>`;
+      return `<div class="bed-btn bed-vacant${apBedCls(bk,rid,i)}" title="Vacant bed ${i+1}" onclick="openBedModal('${bk}','${rid}',${i})">${i+1}</div>`;
     }
   }).join('');
   return `<div class="room-card ${cls}">
@@ -1196,6 +1201,7 @@ function openBedModal(bk,rid,bi){
   const r=campData[bk].rooms[rid];const b=r.beds[bi];
   document.getElementById('bedModalTitle').innerHTML=`<i class="ti ti-bed" style="color:var(--blue)"></i> Bed ${bi+1} — ${rid}`;
   document.getElementById('bedModalSub').textContent=`${BLOCKS_META[bk].name} | ${r.category} | ${r.capacity}x1 | Status: ${b.status.toUpperCase()}`;
+  apBedModalNote(bk,rid,bi);
   document.getElementById('bm_name').value=b.name||'';
   document.getElementById('bm_badge').value=b.badge||'';
   document.getElementById('bm_pos').value=b.position||'';
@@ -1581,7 +1587,7 @@ function filterHistory(){
   }).join('');
   if(filtered.length>300)el.innerHTML+=`<div style="text-align:center;padding:14px;color:var(--text3)">Showing 300 of ${filtered.length}</div>`;
 }
-function delHist(id){if(!isAdmin()){showPwModal('admin');return;}historyLog=historyLog.filter(e=>e.id!==id);saveData();filterHistory();}
+function delHist(id){if(!isAdmin()){showPwModal('admin');return;}mvRecordDeletedLog(historyLog.find(e=>e.id===id));historyLog=historyLog.filter(e=>e.id!==id);saveData();filterHistory();}
 function exportHistory(){
   const rows=[['Action','Name','Badge','Position','Company','Block','Room','Bed','Date','Time','Check-in Date','Notes']];
   historyLog.forEach(e=>rows.push([e.action,e.name||'',e.badge||'',e.position||'',e.company||'',e.block||'',e.room||'',e.bed||'',e.date||'',e.time||'',e.checkin||'',e.notes||'']));
@@ -1632,7 +1638,7 @@ function qeApply(){
   campData[bk].rooms[rid].beds=campData[bk].rooms[rid].beds.map((_,i)=>i<n?{status:'occupied',name:'',badge:'',company:co,position:'',checkin:today(),checktime:nowTime(),notes:'Quick Entry'}:{status:'vacant',name:'',badge:'',company:'',position:'',checkin:'',checkout:'',notes:''});
   addHistEntry({type:'auto',action:'Check In',block:bk,room:rid,bed:'—',name:'Quick Entry',badge:'—',company:co||'—',position:'—',date:today(),time:nowTime(),notes:`Set ${n} beds`});
   saveData();qePreview();qeLoadRooms();
-  const msg=document.getElementById('qe_msg');msg.style.display='block';msg.style.color='var(--green)';msg.textContent=`✓ ${rid}: ${n} beds${co?' — '+co:''}`;
+  const msg=document.getElementById('qe_msg');msg.style.display='block';msg.style.color='var(--green)';msg.textContent=`✓ ${rid}: ${n} beds${co?' — '+co:''}`;if(apJustQueued()){msg.style.color='var(--purple)';msg.textContent=`⏳ ${rid}: ${n} beds${co?' — '+co:''} — sent to Admin for approval`;}
 }
 
 // ===== HISTORY DATE FILTER HELPERS =====
@@ -2005,7 +2011,7 @@ function exportFull(){
 // ===== SETTINGS =====
 function renderSettings(){
   document.getElementById('page-settings').innerHTML=`
-  <div style="font-size:18px;font-weight:800;margin-bottom:16px">Settings</div>`+saveBtnHtml()+`
+  <div style="font-size:18px;font-weight:800;margin-bottom:16px">Settings</div>`+saveBtnHtml()+apSettingsCard()+`
   <div class="card" style="max-width:440px;margin-bottom:14px">
     <div style="font-size:14px;font-weight:700;margin-bottom:14px"><i class="ti ti-lock" style="color:var(--blue)"></i> Change Admin Password</div>
     <div class="form-row"><label class="form-lbl">Current Admin Password</label><input type="password" id="s_old" class="form-ctrl"></div>
@@ -2465,6 +2471,7 @@ function confirmTransfer(){
   saveData();
   document.getElementById('transferModal').classList.add('hidden');
   renderBlock(bk);
+  if(apJustQueued())return;
   alert(`✓ Transfer complete! ${oldBed.name||'Resident'} moved to ${newBk} — ${newRid} Bed ${parseInt(newBi)+1}`);
 }
 
@@ -2478,6 +2485,7 @@ function openBedModal(bk,rid,bi){
   const r=campData[bk].rooms[rid];const b=r.beds[bi];
   document.getElementById('bedModalTitle').innerHTML=`<i class="ti ti-bed" style="color:var(--blue)"></i> Bed ${bi+1} — ${rid}`;
   document.getElementById('bedModalSub').textContent=`${BLOCKS_META[bk].name} | ${r.category} | ${r.capacity}x1 | Status: ${b.status.toUpperCase()}`;
+  apBedModalNote(bk,rid,bi);
   document.getElementById('bm_name').value=b.name||'';
   document.getElementById('bm_badge').value=b.badge||'';
   document.getElementById('bm_pos').value=b.position||'';
@@ -4922,6 +4930,7 @@ if(window.desktopStorage&&window.desktopStorage.isDesktop){
 </script>
 <script src="/patch.js"></script>
 <script src="/shared/portal-bar.js"></script>
+<script src="/shared/camp-approvals.js"></script>
 <script src="/shared/camp-sync.js"></script>
 </body>
 </html>

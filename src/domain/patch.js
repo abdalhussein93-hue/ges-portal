@@ -143,7 +143,7 @@
         continue;
       }
       const arr = resolve(doc, p, false);
-      if (!Array.isArray(arr)) continue;
+      if (!Array.isArray(arr)) { if (op.o === 'ai' || op.o === 'pi') lost(op); continue; }
       if (op.o === 'ai') {
         if (!isObj(op.v)) continue;
         const existing = arr.find(e => isObj(e) && e.id === op.v.id);

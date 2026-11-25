@@ -58,16 +58,18 @@ function register(router, { apps, documents, files, live, audit, config }) {
     if (!ops.length) return ctx.json(200, { rev, missed: [], reload: false });
     if (!doc && role !== 'admin') throw new UserError('This app has not been set up yet. An admin of this app must open it first.', 409);
 
+    const permissionContext = { doc, user: ctx.user };
     for (const op of ops) {
       const malformed = validateOp(op, app);
       if (malformed) throw Object.assign(new UserError(`Invalid change: ${malformed}`), { denied: true });
-      const denied = app.checkPermission(role, op);
+      const denied = app.checkPermission(role, op, permissionContext);
       if (denied) {
         await audit.record({ username: ctx.user.username, appId: app.id, action: 'change-denied', details: { reason: denied }, ip: ctx.ip });
         throw Object.assign(new UserError(denied, 403), { denied: true });
       }
     }
-    const cleaned = cleanOps(ops, app.textMode);
+    const prepared = app.prepareOps ? app.prepareOps(role, ctx.user, ops, doc) : { ops, changed: false };
+    const cleaned = cleanOps(prepared.ops, app.textMode);
     const result = await documents.applyChange(app.id, ctx.user.username, baseRev, cleaned.ops);
     if (result.conflicts.length) {
       await audit.record({ username: ctx.user.username, appId: app.id, action: 'change-conflict', details: { lost: result.conflicts.length, rev: result.rev } });
@@ -75,7 +77,7 @@ function register(router, { apps, documents, files, live, audit, config }) {
     live.broadcast(app.id, 'change', { rev: result.rev, by: ctx.user.username, clientId: String(body.clientId || '').slice(0, 64) });
     ctx.json(200, {
       rev: result.rev,
-      reload: cleaned.changed || result.normalised || result.missed === null || result.conflicts.length > 0,
+      reload: prepared.changed || cleaned.changed || result.normalised || result.missed === null || result.conflicts.length > 0,
       conflicts: result.conflicts.length,
       missed: result.missed ? result.missed.map(c => shareChange(app, role, c)) : null,
     });
