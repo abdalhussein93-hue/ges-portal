@@ -117,7 +117,11 @@ function buildCosting(html) {
   e.mustNotContain('no written-in password', '_pw!=="');
   e.mustNotContain('no written-in password', 'ABD@');
   e.insertBefore('portal scripts', '</head>',
-    script('/patch.js') + script('/shared/portal-bar.js') + script('/shared/bridge.js') + script('/shared/costing-bridge.js'));
+    script('/patch.js') + script('/shared/portal-bar.js') + script('/shared/bridge.js') + script('/shared/costing-bridge.js') +
+    script('/shared/costing-days.js')); // confirming days + change requests (needs the app's functions below)
+  for (const fn of ['dayCons', 'setDayCons', 'dayRecv', 'setDayRecv', 'drawDaily', 'viewDaily', 'render', 'ensureMonth']) {
+    if (!new RegExp(`\\nfunction ${fn}\\(`).test(e.html)) throw new Error(`costing: costing-days.js needs function ${fn}() in the app`);
+  }
   return e.html;
 }
 

@@ -156,10 +156,11 @@ test('camp: normalise gives every log record a unique id', () => {
 });
 
 test('manpower and costing: viewers read only, operators and admins edit', () => {
+  const op = { o: 's', p: ['settings', 'lowStock'], v: 5 };
   for (const app of [manpower, costing]) {
-    assert.ok(app.checkPermission('viewer', {}));
-    assert.equal(app.checkPermission('operator', {}), null);
-    assert.equal(app.checkPermission('admin', {}), null);
+    assert.ok(app.checkPermission('viewer', op, {}));
+    assert.equal(app.checkPermission('operator', op, {}), null);
+    assert.equal(app.checkPermission('admin', op, {}), null);
   }
 });
 

@@ -55,5 +55,5 @@
   };
 
   /** Used by the "Clear day" button (see tools/build-apps.js). */
-  window.GESApp = { isAppAdmin: engine.isAppAdmin, verifyOwnPassword: engine.verifyOwnPassword };
+  window.GESApp = { isAppAdmin: engine.isAppAdmin, verifyOwnPassword: engine.verifyOwnPassword, ready: engine.ready };
 })();
