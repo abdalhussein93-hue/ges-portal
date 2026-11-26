@@ -43,6 +43,13 @@
   .msg.err{color:var(--red)}.msg.ok{color:var(--green)}
   [hidden]{display:none!important}
   .roles{font-size:12.5px;line-height:1.7;color:#334155;margin:0;padding-left:18px}
+  .scope{display:block;margin-top:4px;font-size:11.5px;color:var(--muted);max-width:200px;white-space:normal}
+  .dlg-bg{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .dlg{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:440px;max-height:calc(100vh - 32px);overflow:auto;box-shadow:0 20px 50px rgba(2,6,23,.3)}
+  .dlg h3{margin:0 0 4px;font-size:16px}
+  .dlg label.ck{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;margin-top:8px;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--text)}
+  .dlg label.ck:hover{background:#f8fafc}
+  .dlg .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
 </style>
 </head>
 <body>
@@ -85,6 +92,8 @@
         <li><b>Viewer</b> – can look at everything (in Camp: except Location Profit) but cannot change anything.</li>
         <li><b>Operator</b> – Camp: check in/out, reservations, resident details, room sizes, bathrooms, housekeeping. Manpower and Costing: can change data.</li>
         <li><b>Admin</b> – everything inside that app (Camp: blocks, rooms, capacity, companies, camps, deleting log records, profit; Costing: clearing a day).</li>
+        <li><b>Duty Board</b> – an Admin sees and manages <b>all departments</b>. An Operator (department head) or Viewer only sees the
+          <b>departments you tick</b> with the <b>Departments</b> button: Operators edit them, Viewers only look.</li>
       </ul>
     </div>
   </section>
@@ -105,7 +114,8 @@
     <div class="card">
       <h2>Import data from a desktop program</h2>
       <p class="note">On the PC with the desktop program, open <b>%APPDATA%\&lt;program name&gt;\</b> and choose <b>app_data.json</b>
-        (Camp: “Global Village Camp Management”, Manpower: “GES Manpower System”, Costing: “Global Emirates Services — Daily Costing &amp; Stock”).
+        (folder <b>global-village-camp-management</b> for Camp, <b>ges-manpower-system</b> for Manpower, <b>ges-daily-costing-stock</b> for Costing,
+        <b>duty-board</b> for Duty Board).
         For Costing, a backup made with its “Export JSON” button also works.<br>
         This <b>replaces all data of the chosen app</b>. The current data is kept as a backup first, and everyone using that app reloads.</p>
       <div class="row" style="margin-top:12px">
@@ -174,7 +184,7 @@
       if (u.mustChange && !u.disabled) status += ' <span class="chip c-warn">Temporary password</span>';
       return '<tr data-u="' + esc(u.username) + '">' +
         '<td class="wrap"><b>' + esc(u.name || u.username) + '</b><br><span class="note">' + esc(u.username) + (self ? ' (you)' : '') + '</span></td>' +
-        apps.map(function (a) { return '<td>' + roleSelect(a.id, u.apps[a.id], u.isAdmin ? 'disabled title="Portal admins are Admin in every app"' : 'data-act="role"') + '</td>'; }).join('') +
+        apps.map(function (a) { return '<td>' + roleSelect(a.id, u.apps[a.id], u.isAdmin ? 'disabled title="Portal admins are Admin in every app"' : 'data-act="role"') + scopeCell(a, u) + '</td>'; }).join('') +
         '<td><input type="checkbox" data-act="admin"' + (u.isAdmin ? ' checked' : '') + (self ? ' disabled title="You cannot change your own admin rights"' : '') + '></td>' +
         '<td>' + status + '</td><td>' + when(u.lastLoginAt) + '</td>' +
         '<td style="text-align:right"><button class="btn btn-ghost btn-sm" data-act="reset">🔑 Reset password</button> ' +
@@ -182,6 +192,49 @@
           '<button class="btn btn-red btn-sm" data-act="del" title="Delete">🗑</button>') + '</td></tr>';
     }).join('');
   }
+  // ---------- departments (Duty Board) ----------
+  var SCOPED = { duty: true };
+  var deptList = [];   // [{id, name}] of Duty Board
+  function loadDepts() {
+    return api('GET', '/api/apps/duty/data').then(function (d) {
+      deptList = ((d.doc && d.doc.depts) || []).map(function (x) { return { id: x.id, name: x.name }; });
+    }).catch(function () { deptList = []; });
+  }
+  function userDepts(u) { return ((u.scopes || {}).duty || {}).depts || []; }
+  function scopeCell(a, u) {
+    if (!SCOPED[a.id]) return '';
+    var role = u.apps[a.id];
+    if (!role) return '';
+    if (u.isAdmin || role === 'admin') return '<span class="scope">All departments</span>';
+    var ids = userDepts(u);
+    var names = ids.map(function (id) { var d = deptList.find(function (x) { return x.id === id; }); return d ? d.name : null; }).filter(Boolean);
+    return '<button class="btn btn-ghost btn-sm" style="margin-top:4px" data-act="depts">🏷 Departments (' + names.length + ')</button>' +
+      '<span class="scope">' + (names.length ? esc(names.join(', ')) : '<b style="color:#b91c1c">None yet: sees nothing</b>') + '</span>';
+  }
+  function chooseDepts(u) {
+    if (!deptList.length) { alert('Duty Board has no departments yet. Import its data first (Backups & import), then come back.'); return; }
+    var chosen = new Set(userDepts(u));
+    var bg = document.createElement('div'); bg.className = 'dlg-bg';
+    bg.innerHTML = '<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT"><h3 id="dlgT">Duty Board departments for ' + esc(u.name || u.username) + '</h3>' +
+      '<p class="note">' + esc(u.username) + ' will only see and ' + (u.apps.duty === 'operator' ? 'work on' : 'look at') + ' the departments you tick.</p>' +
+      deptList.map(function (d) {
+        return '<label class="ck"><input type="checkbox" value="' + esc(d.id) + '"' + (chosen.has(d.id) ? ' checked' : '') + '> ' + esc(d.name) + '</label>';
+      }).join('') +
+      '<div class="btns"><button class="btn btn-ghost" type="button" data-x="cancel">Cancel</button><button class="btn btn-blue" type="button" data-x="save">Save</button></div></div>';
+    document.body.appendChild(bg);
+    var close = function () { bg.remove(); };
+    bg.addEventListener('click', function (e) {
+      if (e.target === bg || e.target.dataset.x === 'cancel') return close();
+      if (e.target.dataset.x !== 'save') return;
+      var ids = [].slice.call(bg.querySelectorAll('input:checked')).map(function (c) { return c.value; });
+      var scopes = Object.assign({}, u.scopes || {}, { duty: { depts: ids } });
+      close();
+      update(u, { scopes: scopes }, 'Departments of ' + u.username + ' saved (' + ids.length + ').');
+    });
+    document.addEventListener('keydown', function esc_(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc_); } });
+    var first = bg.querySelector('input'); if (first) first.focus();
+  }
+
   function loadUsers() {
     return api('GET', '/api/admin/users').then(function (list) { userList = list; renderUsers(); }).catch(function (e) { msg('userMsg', e.message); });
   }
@@ -198,7 +251,14 @@
     if (t.dataset.act === 'role') {
       var roles = Object.assign({}, u.apps);
       if (t.value) roles[t.dataset.app] = t.value; else delete roles[t.dataset.app];
-      update(u, { apps: roles }, 'Roles of ' + u.username + ' changed.');
+      var app = t.dataset.app, newRole = t.value;
+      update(u, { apps: roles }, 'Roles of ' + u.username + ' changed.').then(function () {
+        // a department head needs departments: ask right away
+        if (SCOPED[app] && (newRole === 'operator' || newRole === 'viewer') && !userDepts(u).length) {
+          var fresh = userList.find(function (x) { return x.username === u.username; });
+          if (fresh) chooseDepts(fresh);
+        }
+      });
     }
     if (t.dataset.act === 'admin') {
       if (!confirm((t.checked ? 'Make ' + u.username + ' a portal admin (Admin in every app, manages users and backups)?' : 'Remove portal admin rights from ' + u.username + '?'))) { t.checked = !t.checked; return; }
@@ -208,6 +268,7 @@
   $('userTbl').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-act]'); if (!b) return;
     var u = userOf(b);
+    if (b.dataset.act === 'depts') { chooseDepts(u); return; }
     if (b.dataset.act === 'reset' && confirm('Give ' + u.username + ' a new temporary password? Their current password stops working.')) update(u, { resetPassword: true }, 'Password of ' + u.username + ' reset.');
     if (b.dataset.act === 'toggle') update(u, { disabled: !u.disabled }, u.username + (u.disabled ? ' enabled.' : ' disabled.'));
     if (b.dataset.act === 'del' && confirm('Delete the account ' + u.username + '? This cannot be undone.\n\nTip: “Disable” blocks sign-in but keeps the account.')) {
@@ -221,7 +282,13 @@
     var roles = {};
     $('newRoles').querySelectorAll('select').forEach(function (s) { if (s.value) roles[s.dataset.app] = s.value; });
     api('POST', '/api/admin/users', { username: $('nu').value.trim().toLowerCase(), name: $('nn').value.trim(), isAdmin: $('na').checked, apps: roles })
-      .then(function (r) { showSecret(r.user.username, r.tempPassword, 'Temporary password'); $('addForm').reset(); return loadUsers(); })
+      .then(function (r) {
+        showSecret(r.user.username, r.tempPassword, 'Temporary password'); $('addForm').reset();
+        return loadUsers().then(function () {
+          var dutyRole = r.user.apps.duty;
+          if (!r.user.isAdmin && (dutyRole === 'operator' || dutyRole === 'viewer')) chooseDepts(userList.find(function (x) { return x.username === r.user.username; }));
+        });
+      })
       .catch(function (err) { msg('addMsg', err.message); });
   });
 
@@ -296,7 +363,7 @@
     $('newRoles').innerHTML = apps.map(function (a) {
       return '<div class="field"><label>' + esc(a.name) + '</label>' + roleSelect(a.id, '') + '</div>';
     }).join('');
-    return loadUsers();
+    return loadDepts().then(loadUsers);
   }).catch(function (e) { if (e && e.status !== 401) msg('userMsg', e.message); });
 })();
 </script>

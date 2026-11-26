@@ -28,6 +28,9 @@ function readAsar(file) {
   return files;
 }
 
+/** Only the files the web version needs (a portable folder also holds a 180 MB program). */
+const NEEDED = rel => rel === 'index.html' || rel === 'icon.ico' || rel.startsWith('vendor/');
+
 function readFolder(dir) {
   const files = new Map();
   (function walk(d, prefix) {
@@ -35,7 +38,8 @@ function readFolder(dir) {
       if (ent.name === 'node_modules') continue;
       const rel = prefix ? `${prefix}/${ent.name}` : ent.name;
       const full = path.join(d, ent.name);
-      if (ent.isDirectory()) walk(full, rel); else files.set(rel, fs.readFileSync(full));
+      if (ent.isDirectory()) { if (!prefix || rel.startsWith('vendor')) walk(full, rel); }
+      else if (NEEDED(rel)) files.set(rel, fs.readFileSync(full));
     }
   })(dir, '');
   return files;

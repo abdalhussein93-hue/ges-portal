@@ -17,25 +17,30 @@ function appAccess(ctx, apps, minRole = 'viewer') {
   return { app, role };
 }
 
-function shareChange(app, role, c) {
-  return { rev: c.rev, by: c.username, ops: app.filterOps(c.ops, role) };
+function shareChange(app, role, user, c) {
+  return { rev: c.rev, by: c.username, ops: app.filterOps(c.ops, role, user) };
 }
 
 function register(router, { apps, documents, files, live, audit, config }) {
   router.get('/api/apps', async ctx => {
-    const list = apps.list().map(app => ({
-      id: app.id, name: app.name, description: app.description, icon: app.icon, color: app.color, path: app.path,
-      role: ctx.user.apps[app.id] || null,
-      online: live.presence(app.id).length,
-      hasData: !!documents.get(app.id).doc,
-    }));
+    const list = apps.list().map(app => {
+      const role = ctx.user.apps[app.id] || null;
+      const { doc } = documents.get(app.id);
+      return {
+        id: app.id, name: app.name, description: app.description, icon: app.icon, color: app.color, path: app.path,
+        role,
+        scope: role && app.scopeLabel ? app.scopeLabel(doc, role, ctx.user) : null,
+        online: live.presence(app.id).length,
+        hasData: !!doc,
+      };
+    });
     ctx.json(200, list);
   });
 
   router.get('/api/apps/:app/data', async ctx => {
     const { app, role } = appAccess(ctx, apps);
     const { rev, doc } = documents.get(app.id);
-    ctx.json(200, { rev, role, doc: doc ? app.filterDoc(doc, role) : null });
+    ctx.json(200, { rev, role, doc: doc ? app.filterDoc(doc, role, ctx.user) : null });
   });
 
   router.get('/api/apps/:app/changes', async ctx => {
@@ -44,7 +49,7 @@ function register(router, { apps, documents, files, live, audit, config }) {
     const list = await documents.changesSince(app.id, since);
     const { rev } = documents.get(app.id);
     if (!list) return ctx.json(200, { rev, reload: true });
-    ctx.json(200, { rev, changes: list.map(c => shareChange(app, role, c)) });
+    ctx.json(200, { rev, changes: list.map(c => shareChange(app, role, ctx.user, c)) });
   });
 
   router.post('/api/apps/:app/patch', async ctx => {
@@ -79,7 +84,7 @@ function register(router, { apps, documents, files, live, audit, config }) {
       rev: result.rev,
       reload: prepared.changed || cleaned.changed || result.normalised || result.missed === null || result.conflicts.length > 0,
       conflicts: result.conflicts.length,
-      missed: result.missed ? result.missed.map(c => shareChange(app, role, c)) : null,
+      missed: result.missed ? result.missed.map(c => shareChange(app, role, ctx.user, c)) : null,
     });
   });
 

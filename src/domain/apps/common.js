@@ -11,7 +11,9 @@
  *   isRootKey(key)                          is this a valid top-level section of the document?
  *   checkPermission(role, op, {doc, user})  null if allowed, else a message for the user
  *   prepareOps(role, user, ops, doc)        optional: adjust ops before saving -> {ops, changed}
- *   filterDoc(doc, role) / filterOps(ops, role)   remove what a role may not see
+ *   filterDoc(doc, role, user) / filterOps(ops, role, user)   remove what this user may not see
+ *   scoped                                  true if access can be limited per department (user.scopes[id])
+ *   scopeLabel(doc, role, user)             optional: what this user can open, for the home page
  *   normalise(doc)                          fix data in place after a change; returns the top-level
  *                                           sections it changed (empty array = nothing)
  *   importDocument(fileContent)             turn an uploaded desktop data file into a document

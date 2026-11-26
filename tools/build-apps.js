@@ -121,7 +121,29 @@ function buildCosting(html) {
   return e.html;
 }
 
-const BUILDERS = { camp: buildCamp, manpower: buildManpower, costing: buildCosting };
+/** Duty Board */
+function buildDuty(html) {
+  const e = new HtmlEditor(html, 'duty');
+  // "Reset department" must keep the department id, or the people given access to it lose it
+  e.replaceOnce('reset keeps the department id', 'const d=newDept(S.name,true);d.config.site=S.config.site;',
+    'const d=newDept(S.name,true);d.id=S.id;d.config.site=S.config.site;');
+  // "Upload backup" for a department account: a whole-camp file needs an Admin, and a
+  // one-department file can only go into the department they are looking at.
+  e.replaceOnce('whole-camp backups need an Admin', 'if(o&&o.depts){const inc=migrate(o);',
+    "if(o&&o.depts&&!GESDuty.canManageDepts()){alert('This file holds a whole camp. Only an Admin can load it.\\n\\nAsk an Admin, or load a one-department backup into your department.');}\n  " +
+    'else if(o&&o.depts){const inc=migrate(o);');
+  e.replaceOnce('department backups go into the current department',
+    "const intoCur=confirm('Import this backup",
+    "const intoCur=!GESDuty.canManageDepts()?confirm('Replace your department “'+S.name+'” with this backup?\\n\\nOK = replace it.\\nCancel = stop.')||null:confirm('Import this backup");
+  e.replaceOnce('department account can stop the import', 'if(intoCur){d.id=S.id;',
+    'if(intoCur===null)return;if(intoCur){d.id=S.id;');
+  e.insertBefore('portal scripts', '</head>',
+    script('/patch.js') + script('/shared/portal-bar.js') + script('/shared/bridge.js') + script('/shared/duty-bridge.js'));
+  e.mustNotContain('no written-in password', 'ABD@');
+  return e.html;
+}
+
+const BUILDERS = { camp: buildCamp, manpower: buildManpower, costing: buildCosting, duty: buildDuty };
 
 function copyAssets(files, outDir) {
   let n = 0;

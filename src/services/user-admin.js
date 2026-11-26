@@ -17,19 +17,25 @@ function sameRoles(a, b) {
 /** What the browser may see about a user (never the password hash). */
 function publicUser(u, online = false) {
   return {
-    username: u.username, name: u.name, isAdmin: u.isAdmin, apps: u.apps,
+    username: u.username, name: u.name, isAdmin: u.isAdmin, apps: u.apps, scopes: u.scopes || {},
     disabled: u.disabled, mustChange: u.mustChange,
     createdAt: u.createdAt, lastLoginAt: u.lastLoginAt, online,
   };
 }
 
+const SCOPE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
 class UserAdminService {
-  /** @param {{users, sessions, audit, appIds: string[]}} deps */
-  constructor({ users, sessions, audit, appIds }) {
+  /**
+   * @param {{users, sessions, audit, appIds: string[], scopedAppIds?: string[]}} deps
+   *   scopedAppIds: apps whose access can be limited to some departments (e.g. 'duty')
+   */
+  constructor({ users, sessions, audit, appIds, scopedAppIds = [] }) {
     this.users = users;
     this.sessions = sessions;
     this.audit = audit;
     this.appIds = appIds;
+    this.scopedAppIds = scopedAppIds;
   }
 
   /** Keeps only known apps and valid roles: {camp: 'operator', ...} */
@@ -40,12 +46,24 @@ class UserAdminService {
     return out;
   }
 
+  /** Keeps only valid department limits: {duty: {depts: ['id1', 'id2']}} */
+  cleanScopes(input) {
+    const out = {};
+    if (!input || typeof input !== 'object') return out;
+    for (const id of this.scopedAppIds) {
+      const depts = input[id] && Array.isArray(input[id].depts) ? input[id].depts : null;
+      if (!depts) continue;
+      out[id] = { depts: [...new Set(depts.filter(d => typeof d === 'string' && SCOPE_ID.test(d)))].slice(0, 200) };
+    }
+    return out;
+  }
+
   allAppsAdmin() {
     return Object.fromEntries(this.appIds.map(id => [id, 'admin']));
   }
 
   /** @returns {Promise<{user: object, tempPassword: string}>} */
-  async create(actor, { username, name, isAdmin, apps }) {
+  async create(actor, { username, name, isAdmin, apps, scopes }) {
     username = String(username || '').trim().toLowerCase();
     if (!USERNAME.test(username)) throw new UserError('Username: 3-32 characters - lowercase letters, numbers, dot, dash or underscore.');
     if (await this.users.find(username)) throw new UserError('That username already exists.');
@@ -53,9 +71,10 @@ class UserAdminService {
     const user = await this.users.create({
       username, name: String(name || '').trim().slice(0, 80), isAdmin: !!isAdmin,
       apps: isAdmin ? this.allAppsAdmin() : this.cleanAppRoles(apps),
+      scopes: this.cleanScopes(scopes),
       passwordHash: await hashPassword(tempPassword), mustChange: true,
     });
-    await this.audit.record({ username: actor.username, action: 'user-create', details: { target: username, isAdmin: !!isAdmin, apps: user.apps } });
+    await this.audit.record({ username: actor.username, action: 'user-create', details: { target: username, isAdmin: !!isAdmin, apps: user.apps, scopes: user.scopes } });
     return { user: publicUser(user), tempPassword };
   }
 
@@ -86,6 +105,10 @@ class UserAdminService {
     } else if (changes.apps !== undefined) {
       const apps = this.cleanAppRoles(changes.apps);
       if (!sameRoles(apps, target.apps)) { fields.apps = apps; signOut = signOut || !self; }
+    }
+    if (changes.scopes !== undefined) {
+      const scopes = this.cleanScopes(changes.scopes);
+      if (JSON.stringify(scopes) !== JSON.stringify(this.cleanScopes(target.scopes))) { fields.scopes = scopes; signOut = signOut || !self; }
     }
     if (changes.disabled !== undefined && !!changes.disabled !== target.disabled) {
       if (self) throw new UserError('You cannot disable your own account.');

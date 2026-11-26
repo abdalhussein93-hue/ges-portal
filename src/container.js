@@ -26,7 +26,7 @@ async function createContainer(config, { log = console.log, migrate: runMigratio
   const files = new FilesRepository(db);
   const documentsRepo = new DocumentsRepository(db);
   const auth = new AuthService({ users, sessions, audit, config });
-  const userAdmin = new UserAdminService({ users, sessions, audit, appIds: apps.ids() });
+  const userAdmin = new UserAdminService({ users, sessions, audit, appIds: apps.ids(), scopedAppIds: apps.list().filter(a => a.scoped).map(a => a.id) });
   const documents = new DocumentService({ db, documents: documentsRepo, apps, config, log });
   const live = new LiveHub();
   return { config, db, apps, users, sessions, audit, files, auth, userAdmin, documents, live };

@@ -1,8 +1,9 @@
 'use strict';
 /** users table */
 
-const COLUMNS = `username, display_name, is_admin, app_roles, password_hash, must_change_password,
+const COLUMNS = `username, display_name, is_admin, app_roles, app_scopes, password_hash, must_change_password,
   disabled, created_at, last_login_at, password_changed_at`;
+const JSON_FIELDS = new Set(['apps', 'scopes']);
 
 function toUser(row) {
   if (!row) return null;
@@ -11,6 +12,7 @@ function toUser(row) {
     name: row.display_name,
     isAdmin: row.is_admin,
     apps: row.app_roles || {},
+    scopes: row.app_scopes || {},
     passwordHash: row.password_hash,
     mustChange: row.must_change_password,
     disabled: row.disabled,
@@ -43,22 +45,22 @@ class UsersRepository {
     return rows[0].n;
   }
 
-  async create({ username, name, isAdmin, apps, passwordHash, mustChange }) {
+  async create({ username, name, isAdmin, apps, scopes, passwordHash, mustChange }) {
     const { rows } = await this.db.query(
-      `INSERT INTO users (username, display_name, is_admin, app_roles, password_hash, must_change_password, password_changed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, now()) RETURNING ${COLUMNS}`,
-      [username, name || '', !!isAdmin, JSON.stringify(apps || {}), passwordHash, mustChange !== false]);
+      `INSERT INTO users (username, display_name, is_admin, app_roles, app_scopes, password_hash, must_change_password, password_changed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, now()) RETURNING ${COLUMNS}`,
+      [username, name || '', !!isAdmin, JSON.stringify(apps || {}), JSON.stringify(scopes || {}), passwordHash, mustChange !== false]);
     return toUser(rows[0]);
   }
 
   /** Updates only the given fields. */
   async update(username, fields) {
-    const map = { name: 'display_name', isAdmin: 'is_admin', apps: 'app_roles', disabled: 'disabled', mustChange: 'must_change_password' };
+    const map = { name: 'display_name', isAdmin: 'is_admin', apps: 'app_roles', scopes: 'app_scopes', disabled: 'disabled', mustChange: 'must_change_password' };
     const sets = [];
     const values = [];
     for (const [key, column] of Object.entries(map)) {
       if (fields[key] === undefined) continue;
-      values.push(key === 'apps' ? JSON.stringify(fields[key]) : fields[key]);
+      values.push(JSON_FIELDS.has(key) ? JSON.stringify(fields[key]) : fields[key]);
       sets.push(`${column} = $${values.length}`);
     }
     if (!sets.length) return this.find(username);
