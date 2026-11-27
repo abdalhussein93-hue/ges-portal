@@ -5,6 +5,7 @@
  *
  *   GESPortal.mount({appId, me})
  *   GESPortal.setLive(true|false)        GESPortal.setOnline([{username, name}])
+ *   GESPortal.setViewOnly(true|false)    "View only" mark on the bar (view-only accounts)
  *   GESPortal.notice(id, text, {kind, action: {label, run}})   GESPortal.clearNotice(id)
  *   GESPortal.toast(text)                GESPortal.cover(html|null)
  *   GESPortal.api(method, url, body)     fetch helper (signs in again on 401)
@@ -12,7 +13,8 @@
 (function () {
   'use strict';
   var ROLE_LABEL = { admin: 'Admin', operator: 'Operator', viewer: 'Viewer' };
-  var state = { appId: null, me: null, apps: [], live: false, online: [] };
+  var VIEW_ONLY_TEXT = 'View only - changes you make on this page are not saved.';
+  var state = { appId: null, me: null, apps: [], live: false, online: [], viewOnly: false };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -52,6 +54,7 @@
     '.gesp-live{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.12);border-radius:999px;padding:3px 9px;font-size:11.5px;font-weight:600;white-space:nowrap}',
     '.gesp-dot{width:8px;height:8px;border-radius:50%;background:#ef4444}',
     '.gesp-live.on .gesp-dot{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.25)}',
+    '.gesp-view{background:#dbeafe;color:#1e3a8a;border-radius:999px;padding:3px 9px;font-size:11.5px;font-weight:700;white-space:nowrap}',
     '.gesp-menu{position:absolute;right:0;bottom:calc(100% + 8px);width:290px;max-width:calc(100vw - 28px);background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 18px 40px rgba(2,6,23,.25);padding:8px;display:none;max-height:calc(100vh - 90px);overflow:auto}',
     '.gesp.open .gesp-menu{display:block}',
     '.gesp-who{padding:8px 10px 10px;border-bottom:1px solid #e2e8f0;margin-bottom:6px}',
@@ -91,10 +94,12 @@
     var app = currentApp();
     pill.innerHTML = '<span class="gesp-dotapp" style="background:' + esc(app ? app.color : '#64748b') + '"></span>' +
       '<span class="gesp-app">' + esc(app ? app.name : 'GES Portal') + '</span>' +
+      (state.viewOnly ? '<span class="gesp-view">👁 View only</span>' : '') +
       '<span class="gesp-live' + (state.live ? ' on' : '') + '"><span class="gesp-dot"></span><span class="gesp-txt">' +
       (state.live ? 'Live · ' + state.online.length : 'Offline') + '</span></span>';
-    pill.title = state.live ? 'Connected. Online now: ' + state.online.map(function (u) { return u.name || u.username; }).join(', ')
-      : 'Not connected to the server. Your changes are kept and saved when the connection is back.';
+    pill.title = (state.viewOnly ? VIEW_ONLY_TEXT + '\n' : '') +
+      (state.live ? 'Connected. Online now: ' + state.online.map(function (u) { return u.name || u.username; }).join(', ')
+        : 'Not connected to the server. Your changes are kept and saved when the connection is back.');
   }
 
   function renderMenu() {
@@ -149,6 +154,16 @@
   }
 
   function setLive(on) { state.live = !!on; renderPill(); }
+  /**
+   * View-only accounts: a "View only" mark on the bar (it covers nothing) and the explanation
+   * once, as a message that goes away by itself.
+   */
+  function setViewOnly(on) {
+    var was = state.viewOnly;
+    state.viewOnly = !!on;
+    renderPill();
+    if (on && !was) toast(VIEW_ONLY_TEXT, 6000);
+  }
   function setOnline(list) { state.online = list || []; renderPill(); if (root && root.classList.contains('open')) renderMenu(); }
 
   function notice(id, text, opts) {
@@ -167,13 +182,13 @@
   }
   function clearNotice(id) { var n = document.getElementById('gesp-n-' + id); if (n) n.remove(); }
 
-  function toast(text) {
+  function toast(text, ms) {
     ensureStyles();
     if (!toastEl) { toastEl = el('div', 'gesp-toast'); toastEl.setAttribute('role', 'status'); document.body.appendChild(toastEl); }
     toastEl.textContent = text;
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 3500);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, ms || 3500);
   }
 
   function cover(html) {
@@ -190,7 +205,7 @@
   }
 
   window.GESPortal = {
-    mount: mount, setLive: setLive, setOnline: setOnline, notice: notice, clearNotice: clearNotice,
+    mount: mount, setLive: setLive, setOnline: setOnline, setViewOnly: setViewOnly, notice: notice, clearNotice: clearNotice,
     toast: toast, cover: cover, api: api, esc: esc, displayName: displayName, onBeforeLeave: onBeforeLeave,
     goLogin: goLogin, ROLE_LABEL: ROLE_LABEL
   };

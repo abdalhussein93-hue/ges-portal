@@ -68,7 +68,8 @@
     function afterReady() {
       Portal.mount({ appId: appId, me: s.me });
       Portal.onBeforeLeave(engine.flush);
-      if (s.role === 'viewer') Portal.notice('viewonly', 'View only - changes you make on this page are not saved.', { kind: 'info' });
+      // shown on the portal bar, not over the page (a banner there hid the data behind it)
+      if (s.role === 'viewer') Portal.setViewOnly(true);
       connect();
       setInterval(catchUp, CATCH_UP_EVERY_MS);
       ['keydown', 'pointerdown', 'input', 'wheel'].forEach(function (ev) {
