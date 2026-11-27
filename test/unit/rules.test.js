@@ -148,6 +148,23 @@ test('camp: location profit is hidden from non-admins', () => {
   assert.deepEqual(camp.filterOps([{ o: 's', p: ['campData', '_profit', 'a'], v: 1 }], 'viewer'), []);
 });
 
+test('camp: rooms are sent in room-number order (B1-1 ... B1-14, then B2-1)', () => {
+  // the order PostgreSQL jsonb gives back: shortest keys first
+  const stored = ['B1-1', 'B1-9', 'B2-1', 'B9-9', 'B1-10', 'B1-14', 'B10-1', 'B2-10', 'B10-14', 'C3-28'];
+  const rooms = Object.fromEntries(stored.map(k => [k, { number: k }]));
+  const doc = { campData: { B: { rooms, note: 'kept' }, _hkc: { x: 1 } } };
+  for (const role of ['admin', 'operator', 'viewer']) {
+    const out = camp.filterDoc(doc, role);
+    assert.deepEqual(Object.keys(out.campData.B.rooms),
+      ['B1-1', 'B1-9', 'B1-10', 'B1-14', 'B2-1', 'B2-10', 'B9-9', 'B10-1', 'B10-14', 'C3-28'], role);
+    assert.equal(out.campData.B.note, 'kept');
+    assert.equal(out.campData.B.rooms['B1-10'], rooms['B1-10'], 'same room data');
+    assert.deepEqual(out.campData._hkc, { x: 1 });
+  }
+  assert.deepEqual(Object.keys(doc.campData.B.rooms), stored, 'the stored data is not reordered');
+  assert.deepEqual(['A-100', 'A-2', 'a-10', 'A-1'].sort(camp.naturalCompare), ['A-1', 'A-2', 'a-10', 'A-100']);
+});
+
 test('camp: normalise gives every log record a unique id', () => {
   const doc = { historyLog: [{ id: 'a' }, { id: 'a' }, {}] };
   assert.deepEqual(camp.normalise(doc), ['historyLog']);

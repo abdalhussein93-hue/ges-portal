@@ -83,11 +83,48 @@ function checkPermission(role, op, ctx = {}) {
   }
 }
 
-/** Location Profit (revenue, costs) is for admins only. */
+/**
+ * Compares room numbers the way people read them: B1-9 before B1-10, B2-1 after B1-14.
+ * Digit runs compare as numbers, everything else as case-insensitive text.
+ */
+function naturalCompare(a, b) {
+  const x = String(a).toLowerCase().match(/\d+|\D+/g) || [];
+  const y = String(b).toLowerCase().match(/\d+|\D+/g) || [];
+  for (let i = 0; i < Math.min(x.length, y.length); i++) {
+    if (x[i] === y[i]) continue;
+    const nx = /^\d/.test(x[i]), ny = /^\d/.test(y[i]);
+    if (nx && ny) {
+      const d = Number(x[i]) - Number(y[i]);
+      if (d) return d;
+      continue;
+    }
+    return x[i] < y[i] ? -1 : 1;
+  }
+  return x.length - y.length || (a < b ? -1 : a > b ? 1 : 0);
+}
+
+/**
+ * The app shows rooms in the order their keys come in. PostgreSQL (jsonb) keeps object keys
+ * shortest first, which puts B1-10 after B9-9, so the rooms are put back in room-number order
+ * before they are sent. Copies only: the stored data is not changed.
+ */
+function orderRooms(campData) {
+  const out = {};
+  for (const [bk, block] of Object.entries(campData)) {
+    const rooms = block && typeof block === 'object' && block.rooms;
+    if (!rooms || typeof rooms !== 'object' || Array.isArray(rooms)) { out[bk] = block; continue; }
+    const sorted = {};
+    for (const rid of Object.keys(rooms).sort(naturalCompare)) sorted[rid] = rooms[rid];
+    out[bk] = Object.assign({}, block, { rooms: sorted });
+  }
+  return out;
+}
+
+/** Rooms in room-number order; Location Profit (revenue, costs) is for admins only. */
 function filterDoc(doc, role) {
-  if (role === 'admin' || !doc || !doc.campData || !doc.campData[PROFIT]) return doc;
-  const campData = Object.assign({}, doc.campData);
-  delete campData[PROFIT];
+  if (!doc || !doc.campData || typeof doc.campData !== 'object') return doc;
+  const campData = orderRooms(doc.campData);
+  if (role !== 'admin') delete campData[PROFIT];
   return Object.assign({}, doc, { campData });
 }
 
@@ -190,4 +227,5 @@ module.exports = defineApp({
   importDocument,
   ROOT_KEYS,
   approvalOn,
+  naturalCompare,
 });
