@@ -30,7 +30,10 @@ var MV_CATS = ['Management', 'Senior', 'Junior', 'Worker', 'Office'];
 var MV_LBL = { in: 'Check In', out: 'Check Out', transfer: 'Transferred', tin: 'Transferred In', tout: 'Transferred Out', deleted: 'Deleted' };
 
 // ============================================================ helpers
+/** true = an Admin approves each Operator change; false = automatic approval. */
 function apEnabled() { return !approvalCfg || approvalCfg.enabled !== false; }
+var AP_AUTO = 'Automatic approval';     // the server writes the same name
+var AP_KEEP_DECIDED = 300;              // decided requests kept in the list (the check in/out log keeps everything)
 function apQ() { if (!Array.isArray(approvalQueue)) approvalQueue = []; return approvalQueue; }
 function apEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function apClone(o) { return JSON.parse(JSON.stringify(o == null ? {} : o)); }
@@ -51,15 +54,8 @@ function apInCamp(c) { return !!(c && BLOCKS_META[c.bk]); }
 /** The baseline is the data the server has confirmed (see camp-sync.js); kept for older callers. */
 function apTakeBaseline() { /* no snapshot needed in the portal */ }
 
-/**
- * An Operator's bed changes become a request: the changes (before/after per bed) and the new log
- * entries are packed into a request and the beds are put back to the confirmed state.
- * @returns {boolean} true if a request was created
- */
-function captureOperatorChanges() {
-  if (accessLevel !== 'operator' || !apEnabled() || !window.GESCamp) return false;
-  const base = window.GESCamp.base();
-  if (!base || !base.campData) return false;
+/** Bed changes (before = the data the server has confirmed, after = now). */
+function apBedChanges(base) {
   const changes = [];
   Object.keys(campData).forEach(bk => {
     if (bk.charAt(0) === '_') return;
@@ -73,14 +69,31 @@ function captureOperatorChanges() {
       });
     });
   });
+  return changes;
+}
+function apNewId() { return 'R' + Date.now().toString(36).toUpperCase().slice(-6) + Math.random().toString(36).slice(2, 4).toUpperCase(); }
+
+/**
+ * An Operator's bed changes become a request: the changes (before/after per bed) and the new log
+ * entries are packed into a request. With Admin approval the beds are put back to the confirmed
+ * state until the Admin approves; with automatic approval they stay and the request is recorded
+ * as approved.
+ * @returns {boolean} true if a request was created and is waiting for the Admin
+ */
+function captureOperatorChanges() {
+  if (accessLevel !== 'operator' || !window.GESCamp) return false;
+  const base = window.GESCamp.base();
+  if (!base || !base.campData) return false;
+  const changes = apBedChanges(base);
   if (!changes.length) return false;
   // log entries this Operator created (not yet on the server) go into the request
   const known = new Set((base.historyLog || []).map(e => e && e.id));
+  if (!apEnabled()) return apRecordAutomatic(changes, known);
   const hist = historyLog.filter(e => e && !known.has(e.id));
   historyLog = historyLog.filter(e => !e || known.has(e.id));
   changes.forEach(c => { campData[c.bk].rooms[c.rid].beds[c.bi] = apClone(c.before); });
   const req = {
-    id: 'R' + Date.now().toString(36).toUpperCase().slice(-6) + Math.random().toString(36).slice(2, 4).toUpperCase(),
+    id: apNewId(),
     ts: new Date().toISOString(), by: apMyName(), byUser: (apMe() || {}).username || '', status: 'pending', changes, hist, seen: true,
   };
   req.title = apTitle(req);
@@ -94,12 +107,47 @@ function captureOperatorChanges() {
   }, 0);
   return true;
 }
-/** Keeps all pending requests and the newest 300 decided ones (Admin only: Operators may not delete requests). */
+/**
+ * Automatic approval: the Operator's changes stay as they are (they are saved at once) and are
+ * recorded in Approvals as approved by "Automatic approval", with the new log entries marked the
+ * same way as an Admin approval marks them. The server writes the same stamps.
+ * @returns {boolean} false: nothing is waiting for the Admin
+ */
+function apRecordAutomatic(changes, known) {
+  const nowIso = new Date().toISOString();
+  const id = apNewId();
+  const by = apMyName();
+  const hist = [];
+  historyLog.forEach(e => {
+    if (!e || known.has(e.id)) return;
+    Object.assign(e, { approvedBy: AP_AUTO, approvedAt: nowIso, requestId: id, requestedBy: by });
+    hist.push(apClone(e));
+  });
+  const req = {
+    id, ts: nowIso, by, byUser: (apMe() || {}).username || '', status: 'approved', auto: true,
+    decidedBy: AP_AUTO, decidedAt: nowIso, seen: true, changes, hist,
+  };
+  req.title = apTitle(req);
+  req.impact = apImpact(changes);
+  apQ().unshift(req);
+  apRebuildIndex();
+  setTimeout(() => {
+    apToast(`<b><i class="ti ti-circle-check"></i> Saved — approved automatically</b><br>${apEsc(req.title)} · #${apEsc(id)} is recorded in Approvals.`, 'ok', 4500);
+    apRefreshUI();
+  }, 0);
+  return false;
+}
+/**
+ * Keeps all pending requests and the newest decided ones (Admin only: Operators may not delete requests).
+ * @returns {boolean} true if requests were removed
+ */
 function apTrim() {
-  if (!isAdmin()) return;
+  if (!isAdmin()) return false;
   const q = apQ(); const pend = q.filter(r => r.status === 'pending');
-  const done = q.filter(r => r.status !== 'pending').sort((a, b) => (b.ts || '').localeCompare(a.ts || '')).slice(0, 300);
+  const all = q.filter(r => r.status !== 'pending').sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+  const done = all.slice(0, AP_KEEP_DECIDED);
   approvalQueue = [...pend, ...done].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+  return done.length < all.length;
 }
 
 // ============================================================ describing a request
@@ -240,33 +288,54 @@ function apBedModalNote(bk, rid, bi) {
   let h = '';
   const rq = apPendIdx[bk + '|' + rid + '|' + bi];
   if (rq) h += `<div class="ap-mnote" style="background:#fef3c7;border-color:#fcd34d;color:#92400e"><i class="ti ti-alert-triangle"></i> This bed already has a pending request <b>#${apEsc(rq)}</b>. A new change will be sent as a separate request.</div>`;
-  if (accessLevel === 'operator' && apEnabled()) h += `<div class="ap-mnote"><i class="ti ti-shield-check"></i> Operator mode: your change will be <b>sent to the Admin for approval</b> before it updates the camp numbers.</div>`;
+  if (accessLevel === 'operator') {
+    h += apEnabled()
+      ? `<div class="ap-mnote"><i class="ti ti-shield-check"></i> Operator mode: your change will be <b>sent to the Admin for approval</b> before it updates the camp numbers.</div>`
+      : `<div class="ap-mnote" style="background:var(--green-bg);border-color:#6ee7b7;color:#065f46"><i class="ti ti-circle-check"></i> Automatic approval: your change is <b>applied at once</b> and recorded in Approvals.</div>`;
+  }
   el.innerHTML = h;
 }
 function apSettingsCard() {
-  const on = apEnabled();
+  const manual = apEnabled();
+  const pend = apPendingList().length;
+  const opt = (val, on, title, text) => `<label style="display:flex;gap:9px;align-items:flex-start;padding:9px 10px;border:1.5px solid ${on ? 'var(--purple)' : 'var(--border)'};border-radius:8px;margin-bottom:8px;cursor:pointer;background:${on ? 'var(--purple-bg)' : 'transparent'}">
+      <input type="radio" name="apMode" value="${val}" ${on ? 'checked' : ''} onchange="apSetMode(this.value)" style="margin-top:3px">
+      <span><span style="font-size:13px;font-weight:700">${title}</span><br><span style="font-size:11.5px;color:var(--text2)">${text}</span></span></label>`;
   return `<div class="card" style="max-width:440px;margin-bottom:14px">
-    <div style="font-size:14px;font-weight:700;margin-bottom:8px"><i class="ti ti-checklist" style="color:var(--purple)"></i> Operator Approval Workflow</div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:12px">When ON, every Operator change to beds/residents (check in, check out, reserve, cancel reservation, edit, transfer, quick entry) is sent to the Admin as a summary and only applied after approval. Admin changes are applied directly. The server enforces this.</div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer"><input type="checkbox" ${on ? 'checked' : ''} onchange="apToggleEnabled(this)"> Require Admin approval for Operator changes</label>
+    <div style="font-size:14px;font-weight:700;margin-bottom:8px"><i class="ti ti-checklist" style="color:var(--purple)"></i> Operator Changes — Approval</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Applies to every Operator change to beds/residents: check in, check out, reserve, cancel reservation, edit, transfer, quick entry. Admin changes always apply directly. The server enforces this.</div>
+    ${opt('admin', manual, 'Admin approves each change', 'The change is sent to the Admin and only applied after approval.')}
+    ${opt('auto', !manual, 'Automatic approval', 'The change is applied at once and recorded in Approvals as “Approved automatically”, with who did it and when.')}
+    ${!manual && pend ? `<div style="font-size:11.5px;color:var(--purple);margin-top:2px"><i class="ti ti-hourglass"></i> ${pend} request${pend > 1 ? 's' : ''} sent before still wait${pend > 1 ? '' : 's'} for your decision in Approvals.</div>` : ''}
     <div style="font-size:11px;color:var(--text3);margin-top:6px">Admin only.</div>
   </div>`;
 }
-function apToggleEnabled(cb) {
-  if (!isAdmin()) { cb.checked = apEnabled(); showPwModal('admin'); return; }
-  approvalCfg = Object.assign({}, approvalCfg || {}, { enabled: cb.checked }); saveData();
-  apToast(cb.checked ? 'Approval workflow is ON' : 'Approval workflow is OFF — operator changes now apply directly', 'info');
+/** Admin: 'admin' = an Admin approves each Operator change, 'auto' = automatic approval. */
+function apSetMode(mode) {
+  if (!isAdmin()) { showPwModal('admin'); apRerender('page-settings'); return; }
+  const manual = mode !== 'auto';
+  if (manual === apEnabled()) return;
+  if (!manual && !confirm('Switch to automatic approval?\n\nOperator changes (check in, check out, transfer, reservations, edits) will be applied at once, without waiting for an Admin. Each one is still recorded in Approvals as "Approved automatically".')) {
+    apRerender('page-settings'); return;
+  }
+  approvalCfg = Object.assign({}, approvalCfg || {}, { enabled: manual }); saveData();
+  apToast(manual ? 'Admin approval is ON — Operator changes wait for an Admin' : 'Automatic approval is ON — Operator changes apply at once and are recorded', 'info');
+  apRerender('page-settings');
 }
+/** Older screens call this with the checkbox. */
+function apToggleEnabled(cb) { apSetMode(cb.checked ? 'admin' : 'auto'); }
 
 // ============================================================ unlock / lock (called by camp-sync.js)
 function apOnLogin(level) {
   if (level === 'operator') {
-    const ll = document.getElementById('lockLabel'); if (ll && apEnabled()) ll.textContent = 'Operator mode · changes need approval';
+    const ll = document.getElementById('lockLabel'); if (ll) ll.textContent = apEnabled() ? 'Operator mode · changes need approval' : 'Operator mode · automatic approval';
     const un = apQ().filter(apUnseenMine).length;
     apLastUnseen = un;
     if (un) apToast(`<b><i class="ti ti-bell-ringing"></i> The Admin answered ${un} of your request${un > 1 ? 's' : ''}</b><br>Click to see the decisions.`, 'ok', 7000, 'decided');
   } else if (level === 'admin') {
     const n = apPendingList().length;
+    // automatic approval adds a record per change: keep the list to its usual size
+    if (apQ().length - n > AP_KEEP_DECIDED + 50 && apTrim()) saveData();
     if (n) apToast(`<b><i class="ti ti-hourglass-high"></i> ${n} change request${n > 1 ? 's' : ''} waiting for your approval</b><br>Click to review.`, 'warn', 7000, 'approvals');
   }
   apRefreshUI();
@@ -306,6 +375,7 @@ function apRerender(id) {
   else if (id === 'page-summary') renderSummary();
   else if (id === 'page-billing') renderBilling();
   else if (id === 'page-voReport') renderVOReport();
+  else if (id === 'page-settings' && typeof renderSettings === 'function') renderSettings();
   else if (id && id.startsWith('page-block-')) renderBlock(id.replace('page-block-', ''));
 }
 
@@ -326,8 +396,12 @@ function renderApprovals() {
   const cnt = s => q.filter(r => r.status === s).length;
   const pend = cnt('pending'), appr = cnt('approved'), rej = cnt('rejected');
   const role = isAdmin() ? 'admin' : accessLevel === 'operator' ? 'operator' : 'none';
-  const intro = role === 'admin' ? 'Review the changes Operators have submitted. <b>Approve</b> applies the change and updates the dashboard numbers immediately; <b>Reject</b> discards it and notifies the Operator.'
-    : role === 'operator' ? 'Every change you make is sent here for the Admin to approve. You will get a notification when the Admin approves or rejects it.'
+  const auto = !apEnabled();
+  const autoN = q.filter(r => r.status === 'approved' && r.auto).length;
+  const intro = role === 'admin' ? 'Review the changes Operators have submitted. <b>Approve</b> applies the change and updates the dashboard numbers immediately; <b>Reject</b> discards it and notifies the Operator.' +
+      (auto ? ' <b>Automatic approval is on:</b> new Operator changes are applied at once and listed under Approved as “Approved automatically”.' : '')
+    : role === 'operator' ? (auto ? 'Automatic approval is on: your changes are applied at once and recorded here as “Approved automatically”.'
+      : 'Every change you make is sent here for the Admin to approve. You will get a notification when the Admin approves or rejects it.')
       : 'Only an Admin of Camp Management can approve or reject requests.';
   const h = `<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px">
     <div style="flex:1;min-width:260px"><div style="font-size:18px;font-weight:800;margin-bottom:4px">Change Approvals</div>
@@ -336,9 +410,9 @@ function renderApprovals() {
   </div>
   <div class="stats-grid">
     <div class="stat-card" style="--c:var(--purple)"><div class="stat-icon" style="background:var(--purple-bg)"><i class="ti ti-hourglass-high" style="color:var(--purple)"></i></div><div class="stat-lbl">Waiting for approval</div><div class="stat-val" style="color:var(--purple)">${pend}</div><div class="stat-sub">${pend ? apBreakdown() : 'Nothing waiting'}</div></div>
-    <div class="stat-card" style="--c:var(--green)"><div class="stat-icon" style="background:var(--green-bg)"><i class="ti ti-circle-check" style="color:var(--green)"></i></div><div class="stat-lbl">Approved</div><div class="stat-val" style="color:var(--green)">${appr}</div><div class="stat-sub">Applied to the camp data</div></div>
+    <div class="stat-card" style="--c:var(--green)"><div class="stat-icon" style="background:var(--green-bg)"><i class="ti ti-circle-check" style="color:var(--green)"></i></div><div class="stat-lbl">Approved</div><div class="stat-val" style="color:var(--green)">${appr}</div><div class="stat-sub">Applied to the camp data${autoN ? ` · ${autoN} automatically` : ''}</div></div>
     <div class="stat-card" style="--c:var(--red)"><div class="stat-icon" style="background:var(--red-bg)"><i class="ti ti-circle-x" style="color:var(--red)"></i></div><div class="stat-lbl">Rejected</div><div class="stat-val" style="color:var(--red)">${rej}</div><div class="stat-sub">Discarded, operator notified</div></div>
-    <div class="stat-card" style="--c:${apEnabled() ? 'var(--blue)' : 'var(--text3)'}"><div class="stat-icon" style="background:var(--blue-light)"><i class="ti ti-shield-check" style="color:var(--blue)"></i></div><div class="stat-lbl">Workflow</div><div class="stat-val" style="color:${apEnabled() ? 'var(--blue)' : 'var(--text3)'};font-size:20px">${apEnabled() ? 'ON' : 'OFF'}</div><div class="stat-sub">Change in Settings (Admin)</div></div>
+    <div class="stat-card" style="--c:${apEnabled() ? 'var(--blue)' : 'var(--text3)'}"><div class="stat-icon" style="background:var(--blue-light)"><i class="ti ti-shield-check" style="color:var(--blue)"></i></div><div class="stat-lbl">Approval</div><div class="stat-val" style="color:${apEnabled() ? 'var(--blue)' : 'var(--green)'};font-size:20px">${apEnabled() ? 'By Admin' : 'Automatic'}</div><div class="stat-sub">Change in Settings (Admin)</div></div>
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
     <div class="tabs" style="margin-bottom:0">
@@ -360,7 +434,7 @@ function apRenderList() {
   el.innerHTML = list.map(apCardHtml).join('');
 }
 function apCardHtml(r) {
-  const S = { pending: ['Waiting for approval', 'var(--purple)', 'var(--purple-bg)', 'hourglass-high'], approved: ['Approved', '#059669', 'var(--green-bg)', 'circle-check'], rejected: ['Rejected', 'var(--red)', 'var(--red-bg)', 'circle-x'], withdrawn: ['Withdrawn', '#6b7280', '#f3f4f6', 'arrow-back-up'] }[r.status] || ['?', '#666', '#eee', 'help'];
+  const S = { pending: ['Waiting for approval', 'var(--purple)', 'var(--purple-bg)', 'hourglass-high'], approved: [r.auto ? 'Approved automatically' : 'Approved', '#059669', 'var(--green-bg)', r.auto ? 'bolt' : 'circle-check'], rejected: ['Rejected', 'var(--red)', 'var(--red-bg)', 'circle-x'], withdrawn: ['Withdrawn', '#6b7280', '#f3f4f6', 'arrow-back-up'] }[r.status] || ['?', '#666', '#eee', 'help'];
   const isNew = window.__apNewIds && window.__apNewIds.has(r.id);
   const first = r.changes[0] || {};
   const id = apEsc(r.id);
@@ -383,7 +457,7 @@ function apCardHtml(r) {
     </div>
     <ul class="ap-lines">${apLines(r).map(l => `<li>${l}</li>`).join('')}</ul>
     <div class="ap-impact-row"><span style="font-size:11px;color:var(--text3);font-weight:600">${r.status === 'approved' ? 'Dashboard effect:' : r.status === 'pending' ? 'Dashboard effect if approved:' : 'Would have changed:'}</span> ${apImpactHtml(r.impact || apImpact(r.changes))}</div>
-    ${decided ? `<div class="ap-decision" style="border-color:${S[1]};background:${S[2]}"><b style="color:${S[1]}">${S[0]}</b>${r.status !== 'withdrawn' ? ' by ' + apEsc(r.decidedBy || 'Admin') : ''} · ${apFmt(r.decidedAt)}${r.note ? `<div style="margin-top:4px">Note: ${apEsc(r.note)}</div>` : ''}${r.conflict ? '<div style="margin-top:4px;color:#92400e"><i class="ti ti-alert-triangle"></i> Applied over newer data (bed had changed since the request).</div>' : ''}</div>` : ''}
+    ${decided ? `<div class="ap-decision" style="border-color:${S[1]};background:${S[2]}"><b style="color:${S[1]}">${S[0]}</b>${r.status !== 'withdrawn' && !r.auto ? ' by ' + apEsc(r.decidedBy || 'Admin') : ''} · ${apFmt(r.decidedAt)}${r.note ? `<div style="margin-top:4px">Note: ${apEsc(r.note)}</div>` : ''}${r.conflict ? '<div style="margin-top:4px;color:#92400e"><i class="ti ti-alert-triangle"></i> Applied over newer data (bed had changed since the request).</div>' : ''}</div>` : ''}
     <details class="ap-details"><summary>Show field-by-field details</summary>${apDetailsHtml(r)}</details>
     ${act ? `<div class="ap-actions">${act}</div>` : ''}
   </div>`;

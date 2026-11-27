@@ -4,7 +4,8 @@
  * Document: {campData, companies, historyLog, nationalities, BLOCKS_META, foodCategories, campList, appSeeds,
  *            approvals, approvalCfg, deletedLog}
  *   approvals   Operator change requests waiting for / decided by an Admin
- *   approvalCfg {enabled}: when on (the default), Operators cannot change beds directly
+ *   approvalCfg {enabled}: when on (the default), Operators cannot change beds directly;
+ *               off = automatic approval (changes apply at once and are recorded as approved)
  *   deletedLog  check in/out log records an Admin deleted (counted as "Deleted" in the Movement Summary)
  */
 const { defineApp, UserError } = require('./common');
@@ -16,10 +17,22 @@ const OPERATOR_CAMP_SECTIONS = new Set(['_bathrooms', '_hkc', '_housekeeping']);
 const OPERATOR_ROOM_FIELDS = new Set(['L', 'W', 'size']);
 const PROFIT = '_profit';
 const DECIDED = new Set(['approved', 'rejected']);
+/** Name written on requests approved automatically (the browser writes the same, so no reload). */
+const AUTO_APPROVER = 'Automatic approval';
+const CLOCK_SKEW_MS = 10 * 60 * 1000;
 
-/** Admin approval of Operator bed changes is on unless an Admin switched it off. */
+/**
+ * Admin approval of Operator bed changes is on unless an Admin switched it off.
+ * Switched off = automatic approval: Operator changes apply at once and are recorded as approved.
+ */
 function approvalOn(doc) {
   return !(doc && doc.approvalCfg && doc.approvalCfg.enabled === false);
+}
+
+/** The browser's time if it is a real time close to now, otherwise the server's. */
+function nearNow(iso, now) {
+  const t = typeof iso === 'string' ? Date.parse(iso) : NaN;
+  return Number.isFinite(t) && Math.abs(t - now) <= CLOCK_SKEW_MS ? iso : new Date(now).toISOString();
 }
 
 function findRequest(doc, seg) {
@@ -166,12 +179,32 @@ function normalise(doc) {
 }
 
 /**
+ * An Operator's request as the server records it: always in their real name. With Admin approval
+ * it waits ("pending"); with automatic approval it is recorded as approved by "Automatic approval"
+ * (the bed changes themselves are sent in the same save, as an Admin's would be).
+ */
+function stampOperatorRequest(sent, user, who, auto, now) {
+  const v = Object.assign({}, sent, { by: who, byUser: user.username, seen: true });
+  for (const k of ['decidedAt', 'decidedBy', 'note', 'conflict', 'auto']) delete v[k];
+  if (!auto) return Object.assign(v, { status: 'pending' });
+  return Object.assign(v, { status: 'approved', auto: true, decidedBy: AUTO_APPROVER, decidedAt: nearNow(sent.decidedAt, now) });
+}
+
+/** Same content, whatever the key order. */
+function sameRecord(a, b) {
+  const keys = o => Object.keys(o).sort();
+  return JSON.stringify(keys(a)) === JSON.stringify(keys(b)) && keys(a).every(k => JSON.stringify(a[k]) === JSON.stringify(b[k]));
+}
+
+/**
  * Writes the real account onto approval requests and decisions, so nobody can send or decide
  * a request in someone else's name.
  * @returns {{ops: object[], changed: boolean}} changed: the browser's copy now differs (it reloads)
  */
 function prepareOps(role, user, ops, doc) {
   const who = (user && (user.name || user.username)) || 'unknown';
+  const auto = !approvalOn(doc);
+  const now = Date.now();
   let changed = false;
   const out = [];
   const stamps = [];
@@ -182,9 +215,8 @@ function prepareOps(role, user, ops, doc) {
   }
   for (const op of ops) {
     if (role === 'operator' && op.o === 'ai' && op.p.length === 1 && op.p[0] === 'approvals' && op.v && typeof op.v === 'object') {
-      const v = Object.assign({}, op.v, { by: who, byUser: user.username, status: 'pending', seen: true });
-      for (const k of ['decidedAt', 'decidedBy', 'note', 'conflict']) delete v[k];
-      if (JSON.stringify(v) !== JSON.stringify(op.v)) changed = true;
+      const v = stampOperatorRequest(op.v, user, who, auto, now);
+      if (!sameRecord(v, op.v)) changed = true;
       out.push(Object.assign({}, op, { v }));
       continue;
     }
@@ -228,4 +260,5 @@ module.exports = defineApp({
   ROOT_KEYS,
   approvalOn,
   naturalCompare,
+  AUTO_APPROVER,
 });

@@ -106,6 +106,54 @@ describe('Camp approval workflow (PostgreSQL)', () => {
     assert.equal(r.status, 200, r.text);
   });
 
+  it('automatic approval: the change applies at once and is recorded as approved, with no page reload', async () => {
+    const now = new Date().toISOString();
+    // exactly what the browser sends (camp-approvals.js apRecordAutomatic)
+    const hist = { id: 'h-auto', action: 'Check In', name: 'Auto Person', block: 'A', room: 'A-1', date: '2026-11-27', approvedBy: 'Automatic approval', approvedAt: now, requestId: 'RAUTO1', requestedBy: 'OP.ONE' };
+    const req = {
+      id: 'RAUTO1', ts: now, by: 'OP.ONE', byUser: 'op.one', status: 'approved', auto: true, decidedBy: 'Automatic approval', decidedAt: now, seen: true,
+      changes: [{ type: 'bed', bk: 'A', rid: 'A-1', bi: 0, before: { status: 'vacant' }, after: { status: 'occupied', name: 'Auto Person' } }],
+      hist: [hist], title: 'Check In', impact: { occ: 1, res: 0, vac: -1 },
+    };
+    const r = await patch(op1, [
+      { o: 's', p: bedPath('A-1', 0, 'status'), v: 'occupied' },
+      { o: 's', p: bedPath('A-1', 0, 'name'), v: 'Auto Person' },
+      { o: 'ai', p: ['historyLog'], v: hist, at: 0, after: null },
+      { o: 'ai', p: ['approvals'], v: req, at: 0, after: null },
+    ]);
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.reload, false, 'the server writes the same stamps as the browser');
+    const d = (await data(admin)).doc;
+    assert.equal(d.campData.A.rooms['A-1'].beds[0].name, 'Auto Person');
+    const saved = d.approvals.find(x => x.id === 'RAUTO1');
+    assert.deepEqual([saved.status, saved.auto, saved.decidedBy, saved.byUser], ['approved', true, 'Automatic approval', 'op.one']);
+    assert.ok(d.historyLog.some(e => e.id === 'h-auto' && e.approvedBy === 'Automatic approval'));
+  });
+
+  it('automatic approval: the record is always in the real account and cannot claim an Admin decision', async () => {
+    const r = await patch(op2, [{ o: 'ai', p: ['approvals'], v: {
+      id: 'RAUTO2', ts: new Date().toISOString(), by: 'Portal Admin', byUser: 'admin', status: 'rejected', decidedBy: 'Portal Admin', decidedAt: '2001-01-01T00:00:00.000Z', note: 'x', seen: false,
+      changes: [{ type: 'bed', bk: 'A', rid: 'A-2', bi: 0, before: {}, after: {} }], hist: [],
+    }, at: 0, after: null }]);
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.json.reload, true);
+    const saved = (await data(admin)).doc.approvals.find(x => x.id === 'RAUTO2');
+    assert.deepEqual([saved.by, saved.byUser, saved.status, saved.decidedBy, saved.auto, saved.seen, saved.note],
+      ['OP.TWO', 'op.two', 'approved', 'Automatic approval', true, true, undefined]);
+    assert.ok(Math.abs(Date.parse(saved.decidedAt) - Date.now()) < 60000, 'an old decision time is replaced by the server time');
+  });
+
+  it('back to Admin approval: Operator records wait again and cannot be sent as automatic', async () => {
+    assert.equal((await patch(admin, [{ o: 's', p: ['approvalCfg'], v: { enabled: true } }])).status, 200);
+    assert.equal((await patch(op1, [{ o: 's', p: bedPath('A-2', 0, 'name'), v: 'Direct' }])).status, 403);
+    const r = await patch(op1, [{ o: 'ai', p: ['approvals'], v: {
+      id: 'RAUTO3', ts: new Date().toISOString(), by: 'OP.ONE', byUser: 'op.one', status: 'approved', auto: true, decidedBy: 'Automatic approval', decidedAt: new Date().toISOString(), seen: true, changes: [], hist: [],
+    }, at: 0, after: null }]);
+    assert.equal(r.status, 200, r.text);
+    const saved = (await data(admin)).doc.approvals.find(x => x.id === 'RAUTO3');
+    assert.deepEqual([saved.status, saved.auto, saved.decidedBy], ['pending', undefined, undefined]);
+  });
+
   it('a log record an Admin deletes is kept in the deleted list (counted as Deleted)', async () => {
     const d = (await data(admin)).doc;
     const victim = d.historyLog.find(e => e.id === 'h1');
