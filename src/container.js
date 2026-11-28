@@ -12,6 +12,8 @@ const { AuthService } = require('./services/auth');
 const { UserAdminService } = require('./services/user-admin');
 const { DocumentService } = require('./services/documents');
 const { LiveHub } = require('./services/live');
+const { DiningScansRepository } = require('./repositories/dining-scans');
+const { DiningService } = require('./services/dining');
 
 /**
  * @param {{log?: Function, migrate?: boolean}} options  migrate=false: the caller migrates later
@@ -29,7 +31,8 @@ async function createContainer(config, { log = console.log, migrate: runMigratio
   const userAdmin = new UserAdminService({ users, sessions, audit, appIds: apps.ids(), scopedAppIds: apps.list().filter(a => a.scoped).map(a => a.id) });
   const documents = new DocumentService({ db, documents: documentsRepo, apps, config, log });
   const live = new LiveHub();
-  return { config, db, apps, users, sessions, audit, files, auth, userAdmin, documents, live };
+  const dining = new DiningService({ scans: new DiningScansRepository(db), documents, live, audit });
+  return { config, db, apps, users, sessions, audit, files, auth, userAdmin, documents, live, dining };
 }
 
 module.exports = { createContainer };

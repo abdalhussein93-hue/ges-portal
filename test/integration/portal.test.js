@@ -51,7 +51,7 @@ describe('GES Operations Portal (PostgreSQL)', () => {
     assert.equal(me.username, 'admin');
     assert.equal(me.isAdmin, true);
     assert.equal(me.mustChange, false);
-    assert.deepEqual(me.apps, { camp: 'admin', manpower: 'admin', costing: 'admin', duty: 'admin' });
+    assert.deepEqual(me.apps, { camp: 'admin', manpower: 'admin', costing: 'admin', duty: 'admin', dining: 'admin' });
   });
 
   it('refuses wrong passwords and requests from other websites', async () => {
@@ -100,7 +100,7 @@ describe('GES Operations Portal (PostgreSQL)', () => {
 
   it('users only reach the apps they have a role in', async () => {
     const apps = (await P.request('GET', '/api/apps', { cookie: oper })).json;
-    assert.deepEqual(apps.map(a => [a.id, a.role]), [['camp', 'operator'], ['manpower', 'viewer'], ['costing', null], ['duty', null]]);
+    assert.deepEqual(apps.map(a => [a.id, a.role]), [['camp', 'operator'], ['manpower', 'viewer'], ['costing', null], ['duty', null], ['dining', null]]);
     assert.equal((await P.request('GET', '/api/apps/costing/data', { cookie: oper })).status, 403);
     const page = await P.request('GET', '/costing/', { cookie: oper });
     assert.equal(page.status, 302); assert.equal(page.headers.get('location'), '/?denied=costing');
@@ -308,7 +308,7 @@ describe('GES Operations Portal (PostgreSQL)', () => {
   it('making someone a portal admin gives them Admin in every app', async () => {
     const r = await P.request('POST', '/api/admin/users/view.one', { cookie: admin, body: { isAdmin: true } });
     assert.equal(r.status, 200, r.text);
-    assert.deepEqual(r.json.user.apps, { camp: 'admin', manpower: 'admin', costing: 'admin', duty: 'admin' });
+    assert.deepEqual(r.json.user.apps, { camp: 'admin', manpower: 'admin', costing: 'admin', duty: 'admin', dining: 'admin' });
   });
 
   it('a reset password works once and forces a new password', async () => {

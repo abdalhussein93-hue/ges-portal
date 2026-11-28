@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a1628">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Dining Halls Management</title>
+<link rel="icon" href="icon.ico">
+<link rel="stylesheet" href="dining.css">
+</head>
+<body>
+
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <div><div class="title">DINING HALLS</div><div class="sub" id="who"></div></div>
+    </div>
+    <div class="clock" id="clock"></div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button type="button" data-panel="scan" class="admin-op">📷 Scan</button>
+    <button type="button" data-panel="records">📋 Records</button>
+    <button type="button" data-panel="reports">📊 Reports</button>
+    <button type="button" data-panel="cards">🔲 People &amp; Cards</button>
+    <button type="button" data-panel="companies" class="admin-only">🏢 Companies</button>
+    <button type="button" data-panel="settings" class="admin-only">⚙️ Settings</button>
+  </nav>
+
+  <!-- ===================================================== SCAN -->
+  <section class="panel" id="panel-scan">
+    <div class="offline" id="offline" hidden>
+      <b>⛔ No connection — scanning is stopped</b>
+      <span>Every scan must be checked by the server so nobody eats twice. It starts again by itself when the connection is back.</span>
+    </div>
+
+    <div class="label">Dining hall at this gate</div>
+    <div class="halls" id="halls"></div>
+
+    <div class="card">
+      <div class="card-head">📷 Scan card <span class="meal" id="meal-now"></span></div>
+      <div class="card-body">
+        <div class="mode">
+          <button type="button" id="mode-manual" class="on">⌨ Scanner / typing</button>
+          <button type="button" id="mode-camera">📷 Phone camera</button>
+        </div>
+        <form id="manual" autocomplete="off">
+          <input id="code" inputmode="text" autocapitalize="characters" placeholder="Scan or type the barcode…" aria-label="Barcode">
+          <button type="submit" class="btn-dark">Check</button>
+        </form>
+        <div id="camera" hidden>
+          <div class="cam-view" id="cam-view"><video id="video" playsinline muted></video><div class="frame"></div></div>
+          <div class="cam-msg" id="cam-msg">Point the camera at the barcode.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="result" id="result" hidden>
+      <div class="result-head">
+        <div class="result-icon" id="r-icon"></div>
+        <div><div class="result-title" id="r-title"></div><div class="result-reason" id="r-reason"></div></div>
+      </div>
+      <div class="details" id="r-details"></div>
+      <div class="choice" id="r-choice" hidden>
+        <button type="button" class="btn-green" id="r-allow">✅ ALLOW</button>
+        <button type="button" class="btn-red" id="r-deny">🚫 DENY</button>
+      </div>
+      <button type="button" class="btn-gold" id="r-next">🔄 Scan next person</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="num" id="st-hall">0</div><div class="lbl">This hall today</div></div>
+      <div class="stat"><div class="num" id="st-total">0</div><div class="lbl">All halls today</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">🕘 Last scans at this hall</div>
+      <div class="card-body list" id="recent"></div>
+    </div>
+  </section>
+
+  <!-- ===================================================== RECORDS -->
+  <section class="panel" id="panel-records">
+    <div class="card">
+      <div class="card-body">
+        <div class="row2">
+          <label class="field">From<input type="date" id="rec-from"></label>
+          <label class="field">To<input type="date" id="rec-to"></label>
+        </div>
+        <div class="row2">
+          <label class="field">Dining hall<select id="rec-hall"></select></label>
+          <label class="field">Result<select id="rec-status"><option value="">All</option><option value="allowed">✅ Allowed</option><option value="denied">🚫 Denied</option></select></label>
+        </div>
+        <input class="search" id="rec-q" placeholder="🔍 Name, barcode, company or guard…">
+        <a class="btn-dark block" id="rec-csv" href="#">⬇ Download these dates (Excel / CSV)</a>
+      </div>
+    </div>
+    <div class="list" id="rec-list"></div>
+    <button type="button" class="btn-light block" id="rec-more" hidden>Show more</button>
+  </section>
+
+  <!-- ===================================================== REPORTS -->
+  <section class="panel wide" id="panel-reports">
+    <div class="card">
+      <div class="card-body">
+        <div class="row2">
+          <label class="field">From<input type="date" id="rep-from"></label>
+          <label class="field">To<input type="date" id="rep-to"></label>
+        </div>
+        <div class="chips" id="rep-quick">
+          <button type="button" data-range="today">Today</button>
+          <button type="button" data-range="week">Last 7 days</button>
+          <button type="button" data-range="month">This month</button>
+          <button type="button" data-range="last-month">Last month</button>
+        </div>
+      </div>
+    </div>
+    <div class="stats four">
+      <div class="stat"><div class="num" id="rep-meals">0</div><div class="lbl">Meals</div></div>
+      <div class="stat"><div class="num" id="rep-days">0</div><div class="lbl">Days</div></div>
+      <div class="stat"><div class="num" id="rep-avg">0</div><div class="lbl">Meals / day</div></div>
+      <div class="stat"><div class="num" id="rep-cos">0</div><div class="lbl">Companies</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head">📅 Meals per day <button type="button" class="head-btn" id="rep-csv-daily">⬇ CSV</button></div>
+      <div class="table-wrap"><table class="tbl" id="rep-daily"></table></div>
+    </div>
+    <div class="card">
+      <div class="card-head">🏢 Meals per company <button type="button" class="head-btn" id="rep-csv-co">⬇ CSV</button></div>
+      <div class="table-wrap"><table class="tbl" id="rep-co"></table></div>
+    </div>
+  </section>
+
+  <!-- ===================================================== PEOPLE & CARDS -->
+  <section class="panel" id="panel-cards">
+    <div class="card">
+      <div class="card-head">🔲 Cards <span class="head-note" id="cards-info"></span></div>
+      <div class="card-body">
+        <div class="chips" id="cards-filter">
+          <button type="button" data-f="all" class="on">All</button>
+          <button type="button" data-f="assigned">✅ Assigned</button>
+          <button type="button" data-f="free">⬜ Free</button>
+          <button type="button" data-f="blocked">🚫 Blocked</button>
+        </div>
+        <div class="row2">
+          <label class="field">Dining hall<select id="cards-hall"></select></label>
+          <label class="field">Company<select id="cards-co"></select></label>
+        </div>
+        <input class="search" id="cards-q" placeholder="🔍 Barcode, name or room…">
+        <div class="admin-only">
+          <div class="row2 tight">
+            <label class="field">New cards<input type="number" id="gen-count" value="100" min="1" max="500"></label>
+            <button type="button" class="btn-green" id="gen-btn">➕ Add cards</button>
+          </div>
+          <button type="button" class="btn-dark block" id="print-btn">🖨 Print the cards shown</button>
+        </div>
+      </div>
+    </div>
+    <div class="list" id="cards-list"></div>
+  </section>
+
+  <!-- ===================================================== COMPANIES -->
+  <section class="panel" id="panel-companies">
+    <div class="card">
+      <div class="card-head">➕ Add company</div>
+      <div class="card-body">
+        <form id="co-form" class="inline-form"><input id="co-name" placeholder="Company name" maxlength="120"><button type="submit" class="btn-green">Add</button></form>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head">🏢 Companies <span class="head-note" id="co-count"></span></div>
+      <div class="card-body list" id="co-list"></div>
+    </div>
+  </section>
+
+  <!-- ===================================================== SETTINGS -->
+  <section class="panel" id="panel-settings">
+    <div class="card">
+      <div class="card-head">🍽 Entry rule</div>
+      <div class="card-body">
+        <label class="opt"><input type="radio" name="rule" value="meal"><span><b>Once per meal</b><br><small>A person can come for breakfast, lunch and dinner — once each.</small></span></label>
+        <label class="opt"><input type="radio" name="rule" value="day"><span><b>Once per day</b><br><small>One entry per day in their dining hall.</small></span></label>
+        <div class="row2">
+          <label class="field">Lunch starts at<select id="set-lunch"></select></label>
+          <label class="field">Dinner starts at<select id="set-dinner"></select></label>
+        </div>
+        <p class="note">Breakfast is until lunch starts. Times are camp time (UAE).</p>
+        <label class="check"><input type="checkbox" id="set-unreg"> Guards may let in a card that is not registered (it is recorded with their name)</label>
+        <button type="button" class="btn-dark block" id="set-save">Save settings</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head">🔁 Let people in again today</div>
+      <div class="card-body">
+        <p class="note">Use this only for an exception (for example a second sitting). Today's entries stay counted; the people can simply scan in once more.</p>
+        <div class="row2 tight">
+          <label class="field">Dining hall<select id="rel-hall"></select></label>
+          <button type="button" class="btn-red" id="rel-btn">Let in again</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head">⬆ Bring in the old app's backups</div>
+      <div class="card-body">
+        <p class="note">Choose the backup files (<b>mess_backup_….json</b>) from every phone and PC. All their scan records are added; a record already brought in is skipped, so nothing is counted twice.</p>
+        <input type="file" id="imp-files" accept=".json,application/json" multiple>
+        <div id="imp-choose"></div>
+        <button type="button" class="btn-dark block" id="imp-btn" disabled>Bring in</button>
+        <div class="note" id="imp-result"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- first start (Admin, no data yet) -->
+<div class="setup" id="setup" hidden>
+  <div class="card">
+    <div class="card-head">🍽 Set up Dining Halls</div>
+    <div class="card-body">
+      <p>Nothing is set up yet. Start with 1000 empty cards (MH00001 – MH01000), or bring in the backup files of the old Mess Hall app from Settings afterwards.</p>
+      <button type="button" class="btn-gold block" id="setup-btn">Start with 1000 cards</button>
+    </div>
+  </div>
+</div>
+
+<!-- assign / edit a card -->
+<dialog id="dlg-person">
+  <form method="dialog" id="person-form">
+    <div class="dlg-head"><span id="pf-title">Card</span><button type="button" class="x" id="pf-close" aria-label="Close">✕</button></div>
+    <div class="dlg-body">
+      <div class="code-box" id="pf-code"></div>
+      <label class="field">Full name *<input id="pf-name" maxlength="120" required></label>
+      <div class="row2">
+        <label class="field">Room *<input id="pf-room" maxlength="40" required></label>
+        <label class="field">Dining hall *<select id="pf-hall"></select></label>
+      </div>
+      <label class="field">Company *<select id="pf-co" required></select></label>
+      <label class="check"><input type="checkbox" id="pf-allowed"> Allowed to enter (untick to block)</label>
+      <div class="error" id="pf-error"></div>
+      <button type="submit" class="btn-green block">✅ Save</button>
+      <button type="button" class="btn-light block" id="pf-remove">🗑 Free this card (remove the person)</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+<div id="print-area"></div>
+
+<script src="/patch.js"></script>
+<script src="/shared/portal-bar.js"></script>
+<script src="/shared/bridge.js"></script>
+<script src="vendor/JsBarcode.all.min.js"></script>
+<script src="vendor/quagga.min.js"></script>
+<script src="dining.js"></script>
+</body>
+</html>

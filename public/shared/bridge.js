@@ -6,7 +6,8 @@
  *     getLive:     function () { return liveDataObject; },   // LIVE mode: others' changes are applied in place
  *     applyLive:   function (ops) { ... },                    //   (Costing)
  *     rerender:    function () { ... },
- *     isBusy:      function () { return true while the user is typing / a form is open; }
+ *     isBusy:      function () { return true while the user is typing / a form is open; },
+ *     events:      { name: function (data) { ... } }          // optional: other live events of this app
  *   });
  *   // without getLive/applyLive the app runs in RELOAD mode: when others change data the page
  *   // reloads as soon as the user pauses (Manpower - its screens keep their own copies of the data).
@@ -238,6 +239,10 @@
         if (d.by !== s.me.username) markStale([{ by: d.by }]);
       });
       es.addEventListener('presence', function (e) { Portal.setOnline(JSON.parse(e.data)); });
+      // app-specific live events (e.g. Dining Halls: a gate scanned a card)
+      Object.keys(adapter.events || {}).forEach(function (name) {
+        es.addEventListener(name, function (e) { try { adapter.events[name](JSON.parse(e.data)); } catch (err) { console.error(err); } });
+      });
       es.addEventListener('logout', function () {
         es.close();
         alert('Your account was changed by an admin. Please sign in again.');

@@ -66,9 +66,10 @@
     camp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-6h6v6"/><path d="M9 10h.01M15 10h.01"/></svg>',
     manpower: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2c2.8.3 5 2.6 5 5.8"/></svg>',
     costing: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 15l3-3 2 2 4-5"/><path d="M8 8h.01"/></svg>',
-    duty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M12 14v3l2 1"/></svg>'
+    duty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M12 14v3l2 1"/></svg>',
+    dining: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v8a2 2 0 0 1-2 2v8"/><path d="M4 3v5a3 3 0 0 0 6 0V3"/><path d="M17 21V3c-2.2 1.3-3.5 4-3.5 7.5 0 2 1.2 3.5 3.5 3.5"/></svg>'
   };
-  var DENIED = { camp: 'Camp Management', manpower: 'GES Manpower', costing: 'Daily Costing & Stock', duty: 'Duty Board' };
+  var DENIED = { camp: 'Camp Management', manpower: 'GES Manpower', costing: 'Daily Costing & Stock', duty: 'Duty Board', dining: 'Dining Halls Management' };
 
   var denied = new URLSearchParams(location.search).get('denied');
   if (denied) {

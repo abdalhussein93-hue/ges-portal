@@ -15,7 +15,7 @@ const COOKIE = 'ges_sid';
 const SMALL_JSON = 64 * 1024;
 
 /**
- * @param {object} deps  {config, apps, auth, userAdmin, users, documents, files, live, audit}
+ * @param {object} deps  {config, apps, auth, userAdmin, users, documents, files, live, audit, dining}
  * @returns {(req, res) => void}
  */
 function createApp(deps) {
@@ -27,6 +27,7 @@ function createApp(deps) {
   require('./routes/auth').register(router, shared);
   require('./routes/apps').register(router, shared);
   require('./routes/admin').register(router, shared);
+  require('./routes/dining').register(router, shared);
 
   function makeContext(req, res, url) {
     const https = isHttps(req, config.trustProxy);

@@ -37,7 +37,7 @@ describe('emergency admin', () => {
     assert.equal(admin.isAdmin, true);
     assert.equal(admin.disabled, false);
     assert.equal(admin.mustChange, false);
-    assert.deepEqual(admin.apps, { camp: 'admin', manpower: 'admin', costing: 'admin', duty: 'admin' });
+    assert.deepEqual(admin.apps, { camp: 'admin', manpower: 'admin', costing: 'admin', duty: 'admin', dining: 'admin' });
     await s.stop('test');
   });
 

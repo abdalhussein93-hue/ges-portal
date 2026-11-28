@@ -1,12 +1,28 @@
 # GES Operations Portal
 
-One live web portal for three Global Emirates Services apps. Sign in once, pick an app:
+One live web portal for the Global Emirates Services apps. Sign in once, pick an app:
 
 | App | What it does |
 |---|---|
 | **Camp Management** | Rooms and beds, check in / check out, occupancy, company billing, man-days, location profit |
 | **GES Manpower** | Staff list, transfers and resignations, vacation plan, monthly timesheet and salary |
 | **Daily Costing & Stock** | Kitchen stock, daily consumption, monthly prices, man-days, budget per cost centre, alerts |
+| **Duty Board** | Duty roster per department; department heads see only their department |
+| **Dining Halls Management** | DYCC dining hall gates: barcode cards, scanning on phones (camera or scanner), one meal per person, live counts, meal reports |
+
+### Dining Halls Management
+
+* **Every scan is decided by the server** (`POST /api/dining/scan`), so all gates share one list of who has
+  eaten: a person refused at one gate is refused at every gate. A unique index in PostgreSQL refuses a
+  second entry even when two gates scan the same card at the same moment.
+* **No connection = no scanning.** The phone shows a red "No connection" banner and starts again by itself.
+* Each scan is a row in `dining_scans` (kept forever, never part of the app document). Day and meal are
+  worked out in camp time (Asia/Dubai). Rule: one entry per meal (default) or per day; meal times are set by an Admin.
+* Roles: **Operator** = gate guard (scans only) · **Admin** = people, cards, companies, settings, "let in again",
+  import · **Viewer** = records and reports.
+* The old offline Mess Hall app's backup files (`mess_backup_*.json`) can be brought in from Settings; a record
+  already brought in is skipped, so files from several phones can be merged safely.
+* On a phone: open the portal in Chrome → Dining Halls → menu ⋮ → *Add to Home screen*.
 
 Everyone works on the same data, from any browser (PC, tablet, phone). A change made by one person
 appears on everyone else's screen within a second. The app screens are the same as in the desktop programs.
@@ -60,6 +76,8 @@ The **server** enforces the roles. A blocked attempt is refused, explained to th
    meanwhile) the user is told and it is recorded in the activity log. Nothing is silently dropped.
 6. **Only one server** may write to a database (a PostgreSQL lock); a second one refuses to start.
 7. **Imports** (replacing an app's data) keep the old data as a backup first.
+8. **Dining hall scans** are rows in `dining_scans`, each written before the gate is answered, and included in
+   the nightly database dump.
 
 ### Text cleaning
 

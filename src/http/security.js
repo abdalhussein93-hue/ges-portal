@@ -19,7 +19,8 @@ function setSecurityHeaders(res, https) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'same-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=(self)'); // Costing has voice input
+  // Costing has voice input; Dining Halls scans barcodes with the phone camera (this site only)
+  res.setHeader('Permissions-Policy', 'camera=(self), geolocation=(), microphone=(self)');
   res.setHeader('Content-Security-Policy', CSP);
   if (https) res.setHeader('Strict-Transport-Security', 'max-age=31536000');
 }
