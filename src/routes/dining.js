@@ -16,6 +16,24 @@ function role(ctx, minRole) {
   return r;
 }
 
+/**
+ * Sends a download written in pieces (`produce(write)`), waiting when the connection is slow.
+ * If something fails half way the file ends with a line saying so - a broken file is never
+ * mistaken for a complete one (a backup file then fails to open, and must be downloaded again).
+ */
+async function stream(ctx, type, fileName, produce) {
+  const res = ctx.res;
+  res.writeHead(200, { 'Content-Type': type, 'Content-Disposition': `attachment; filename="${fileName}"`, 'Cache-Control': 'no-store' });
+  ctx.handled();
+  try {
+    await produce(chunk => (res.write(chunk) ? null : new Promise(resolve => res.once('drain', resolve))));
+  } catch (err) {
+    console.error(`[dining] download ${fileName} failed:`, err.message);
+    res.write('\r\nTHE DOWNLOAD STOPPED BECAUSE OF A SERVER ERROR. PLEASE DOWNLOAD IT AGAIN.\r\n');
+  }
+  res.end();
+}
+
 function register(router, { dining, audit, config }) {
   // a guard (Operator) or Admin scans a card
   router.post('/api/dining/scan', async ctx => {
@@ -44,20 +62,19 @@ function register(router, { dining, audit, config }) {
     const q = ctx.url.searchParams;
     dining.filter(q, true); // check the range before the download starts
     await audit.record({ username: ctx.user.username, appId: APP_ID, action: 'dining-export', details: { from: q.get('from'), to: q.get('to') }, ip: ctx.ip });
-    const res = ctx.res;
-    res.writeHead(200, {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="dining_scans_${q.get('from')}_to_${q.get('to')}.csv"`,
-      'Cache-Control': 'no-store',
-    });
-    ctx.handled();
-    try {
-      await dining.exportCsv(q, chunk => (res.write(chunk) ? null : new Promise(resolve => res.once('drain', resolve))));
-    } catch (err) {
-      console.error('[dining] export failed:', err.message);
-      res.write('\r\n"The export stopped because of a server error. Please download it again."\r\n');
-    }
-    res.end();
+    await stream(ctx, 'text/csv; charset=utf-8', `dining_scans_${q.get('from')}_to_${q.get('to')}.csv`, write => dining.exportCsv(q, write));
+  });
+
+  // Admin: download a backup file (people, cards, companies, settings + scan records)
+  router.get('/api/dining/backup', async ctx => {
+    role(ctx, 'admin');
+    const q = ctx.url.searchParams;
+    if (q.get('from') || q.get('to')) dining.filter(q, true); // check the range before the download starts
+    dining.setup();
+    await audit.record({ username: ctx.user.username, appId: APP_ID, action: 'dining-backup', details: { from: q.get('from') || 'all', to: q.get('to') || 'all' }, ip: ctx.ip });
+    const stamp = new Date().toISOString().slice(0, 10);
+    const name = q.get('from') ? `dining_backup_${q.get('from')}_to_${q.get('to')}.json` : `dining_backup_all_${stamp}.json`;
+    await stream(ctx, 'application/json; charset=utf-8', name, write => dining.backup(q, write));
   });
 
   // Admin: let people in again today

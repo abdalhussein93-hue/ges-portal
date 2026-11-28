@@ -37,6 +37,18 @@ test('dining: barcodes are compared without spaces and case; junk is refused', (
   assert.equal(Dining.findPerson(doc, 'MH00009'), null);
 });
 
+test('dining: an NFC tag finds the person it is linked to, whatever separators the phone uses', () => {
+  assert.equal(Dining.normNfc('04:a2:3b:91'), '04A23B91');
+  assert.equal(Dining.normNfc('04-A2 3B'), '04A23B');
+  assert.equal(Dining.normNfc('x!'), '');
+  const doc = { people: [{ id: 'a', barcode: 'MH00001', nfc: '04A23B91' }, { id: 'b', barcode: 'MH00002' }] };
+  assert.equal(Dining.findPerson(doc, '04:A2:3B:91').id, 'a');
+  assert.equal(Dining.findPerson(doc, 'MH00001').id, 'a');
+  assert.equal(Dining.findPerson(doc, '04A23B92'), null);
+  const r = Dining.fromLegacyBackup({ people: [{ id: 1, name: 'A', category: 'Senior', barcode: 'MH00001', nfc: '04:a2' }], entryLog: [] });
+  assert.equal(r.doc.people[0].nfc, '04A2', 'a backup of this app keeps the tags');
+});
+
 test('dining: an old app backup becomes the setup and scan records, nothing lost', () => {
   const t = Date.parse('2026-11-20T04:30:00Z'); // 08:30 in camp
   const r = Dining.fromLegacyBackup({

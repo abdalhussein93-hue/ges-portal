@@ -148,8 +148,8 @@
     window.addEventListener('offline', function () { setOnline(false); });
     window.addEventListener('online', function () { refreshToday(); });
     document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'visible') { if (S.panel === 'scan') { refreshToday(); keepAwake(); } }
-      else stopCamera();
+      if (document.visibilityState === 'visible') { if (S.panel === 'scan') { refreshToday(); keepAwake(); if (S.mode === 'nfc') startNfc(); } }
+      else { stopCamera(); stopNfc(); }
     });
   }
 
@@ -169,7 +169,7 @@
     S.panel = name;
     document.querySelectorAll('.panel').forEach(function (p) { p.classList.toggle('on', p.id === 'panel-' + name); });
     document.querySelectorAll('#tabs button').forEach(function (b) { b.classList.toggle('on', b.dataset.panel === name); });
-    if (name !== 'scan') stopCamera();
+    if (name !== 'scan') { stopCamera(); stopNfc(); }
     renderPanel(name);
   }
   function renderPanel(name) {
@@ -215,27 +215,33 @@
   };
   $('mode-manual').onclick = function () { setMode('manual'); };
   $('mode-camera').onclick = function () { setMode('camera'); };
+  $('mode-nfc').onclick = function () { setMode('nfc'); };
+  $('nfc-start').onclick = function () { startNfc(); };
   $('r-next').onclick = function () { hideResult(); focusCode(); };
-  $('r-allow').onclick = function () { if (S.pending) scan(S.pending, 'allow'); };
-  $('r-deny').onclick = function () { if (S.pending) scan(S.pending, 'deny'); };
+  $('r-allow').onclick = function () { if (S.pending) scan(S.pending, 'allow', S.pendingMethod); };
+  $('r-deny').onclick = function () { if (S.pending) scan(S.pending, 'deny', S.pendingMethod); };
 
   function setMode(mode) {
     S.mode = mode;
-    $('mode-manual').classList.toggle('on', mode === 'manual');
-    $('mode-camera').classList.toggle('on', mode === 'camera');
+    ['manual', 'camera', 'nfc'].forEach(function (m) { $('mode-' + m).classList.toggle('on', mode === m); });
     $('manual').hidden = mode !== 'manual';
     $('camera').hidden = mode !== 'camera';
-    if (mode === 'camera') startCamera(); else { stopCamera(); focusCode(); }
+    $('nfc').hidden = mode !== 'nfc';
+    stopCamera(); stopNfc();
+    if (mode === 'camera') startCamera();
+    else if (mode === 'nfc') startNfc();
+    else focusCode();
   }
 
-  function scan(raw, decision) {
+  /** @param {string} [method] 'nfc' when the card was read by NFC */
+  function scan(raw, decision, method) {
     var code = norm(raw);
     if (!code) { toast('Scan or type a barcode'); return; }
     if (!S.online) { beepNo(); toast('No connection — scanning is stopped'); return; }
     if (S.busy) return;
     S.busy = true; setScanEnabled(false);
     ctx(); // phones only allow sound after a touch: open it now
-    Portal.api('POST', '/api/dining/scan', { hall: S.hall, barcode: code, decision: decision })
+    Portal.api('POST', '/api/dining/scan', { hall: S.hall, barcode: code, decision: decision, method: method === 'nfc' ? 'nfc' : 'code' })
       .then(function (r) { setOnline(true); showResult(r); })
       .catch(function (e) {
         if (!e || !e.status || e.status >= 502) { setOnline(false); showProblem('NOT CHECKED', 'No connection to the server. Scan this card again when the connection is back.'); }
@@ -258,6 +264,7 @@
     box.hidden = false;
     if (r.result === 'unregistered') {
       S.pending = r.barcode;
+      S.pendingMethod = r.method;
       box.className = 'result unregistered';
       $('r-icon').textContent = '❓';
       $('r-title').textContent = 'NOT REGISTERED';
@@ -421,6 +428,75 @@
     if (!keepMessage && $('cam-msg')) camMessage('Point the camera at the barcode.');
   }
 
+  // ------------------------------------------------------------------ NFC (Chrome on Android phones with NFC)
+  var nfc = { ctrl: null };
+  function nfcSupported() { return 'NDEFReader' in window; }
+  function nfcMessage(t, on) { $('nfc-msg').textContent = t; $('nfc-box').classList.toggle('on', !!on); }
+
+  /** What a tag gives: the card number written on it (text), else its own serial number. */
+  function tagCode(e) {
+    var recs = (e.message && e.message.records) || [];
+    for (var i = 0; i < recs.length; i++) {
+      var r = recs[i];
+      if (r.recordType !== 'text' || !r.data) continue;
+      try {
+        var t = new TextDecoder(r.encoding || 'utf-8').decode(r.data).trim();
+        if (/^[A-Za-z0-9\-_.]{3,40}$/.test(t)) return t;
+      } catch (err) { /* unreadable record */ }
+    }
+    return e.serialNumber || '';
+  }
+
+  /**
+   * Starts reading tags; `onTag(code, serial)` for each one. Returns a Promise that rejects with a
+   * message the user can act on. Chrome needs a tap on the page before the first start.
+   */
+  function readTags(onTag, ctrl) {
+    if (!nfcSupported()) return Promise.reject(new Error('NFC works in Chrome on Android phones that have NFC. Use the scanner or the camera on this device.'));
+    var reader = new window.NDEFReader();
+    reader.onreading = function (e) { onTag(tagCode(e), e.serialNumber || ''); };
+    reader.onreadingerror = function () { toast('This tag could not be read — hold it still and try again'); };
+    return reader.scan({ signal: ctrl.signal }).catch(function (err) {
+      var n = err && err.name;
+      throw new Error(n === 'NotAllowedError' ? 'NFC is not allowed. Allow NFC for this site (lock icon next to the address), then tap "Start NFC reading".'
+        : n === 'NotSupportedError' || n === 'NotReadableError' ? 'NFC is switched off or not available. Switch NFC on in the phone settings, then tap "Start NFC reading".'
+        : 'NFC could not start: ' + ((err && err.message) || err));
+    });
+  }
+
+  function startNfc() {
+    stopNfc();
+    $('nfc-start').hidden = true;
+    if (!nfcSupported()) { nfcMessage('NFC works in Chrome on Android phones that have NFC. Use the scanner or the camera on this device.'); return; }
+    var ctrl = new AbortController();
+    nfc.ctrl = ctrl;
+    nfcMessage('Starting NFC…');
+    readTags(function (code) {
+      if (nfc.ctrl !== ctrl) return;
+      onNfcCode(code);
+    }, ctrl).then(function () {
+      if (nfc.ctrl === ctrl) nfcMessage('Ready — hold the card against the back of the phone.', true);
+    }, function (err) {
+      if (nfc.ctrl !== ctrl) return;
+      nfc.ctrl = null;
+      nfcMessage(err.message);
+      $('nfc-start').hidden = false; // a tap on the page lets Chrome start NFC
+    });
+  }
+  function stopNfc() {
+    if (nfc.ctrl) { try { nfc.ctrl.abort(); } catch (e) { /* stopped */ } nfc.ctrl = null; }
+    if ($('nfc-box')) $('nfc-box').classList.remove('on');
+  }
+  function onNfcCode(code) {
+    code = norm(code);
+    var now = Date.now();
+    if (!code || S.busy || S.pending || !S.online) return;
+    if (code === S.lastCode && now - S.lastCodeAt < SAME_CODE_MS) return;
+    S.lastCode = code; S.lastCodeAt = now;
+    vibrate(30);
+    scan(code, undefined, 'nfc');
+  }
+
   // ================================================================== RECORDS
   function recordHtml(r) {
     var unreg = !r.personId && r.source === 'scan';
@@ -428,7 +504,7 @@
     return '<div class="item"><span class="sdot ' + r.status + '"></span><div class="info">' +
       '<div class="name">' + esc(who) + ' <span class="pill ' + (r.status === 'allowed' ? 'ok' : 'no') + '">' + (r.status === 'allowed' ? 'IN' : 'DENIED') + '</span></div>' +
       '<div class="meta">' + badge(r.hall) + ' ' + esc([r.company, r.meal, r.reason + (r.released ? ' (let in again)' : ''), r.scannedByName].filter(Boolean).join(' · ')) + '</div>' +
-      '<div class="mono">' + esc(r.barcode) + (r.source === 'import' ? ' · old app' : '') + '</div></div>' +
+      '<div class="mono">' + (r.method === 'nfc' ? '📶 ' : '') + esc(r.barcode) + (r.source === 'import' ? ' · from a backup' : '') + '</div></div>' +
       '<div class="time">' + esc(timeOf(r.at)) + '<br><small>' + esc(dayLabel(r.day)) + '</small></div></div>';
   }
 
@@ -567,7 +643,7 @@
       if ((hall || co) && !p) return false;
       if (hall && p.hall !== hall) return false;
       if (co && p.company !== co) return false;
-      if (q && x.code.toLowerCase().indexOf(q) < 0 && !(p && ((p.name || '').toLowerCase().indexOf(q) >= 0 || (p.room || '').toLowerCase().indexOf(q) >= 0))) return false;
+      if (q && x.code.toLowerCase().indexOf(q) < 0 && !(p && ((p.name || '').toLowerCase().indexOf(q) >= 0 || (p.room || '').toLowerCase().indexOf(q) >= 0 || (p.nfc || '').toLowerCase().indexOf(q) >= 0))) return false;
       return true;
     });
   }
@@ -591,7 +667,7 @@
         '<div class="name">' + (p ? esc(p.name) : '<span style="color:var(--gray3);font-style:italic">Free card</span>') + ' ' + (p ? badge(p.hall) : '') +
         (p && p.allowed === false ? ' <span class="pill no">BLOCKED</span>' : '') + '</div>' +
         '<div class="meta">' + (p ? esc((p.company || '—') + ' · Room ' + (p.room || '—')) : 'Not assigned') + '</div>' +
-        '<div class="mono">' + esc(x.code) + '</div></div>' + acts + '</div>';
+        '<div class="mono">' + esc(x.code) + (p && p.nfc ? ' · 📶 ' + esc(p.nfc) : '') + '</div></div>' + acts + '</div>';
     }).join('') + (list.length > shown.length ? '<div class="empty">+ ' + (list.length - shown.length) + ' more — use the search or filters</div>' : '') +
       (list.length ? '' : '<div class="empty">No cards for these choices</div>');
     $('cards-list').querySelectorAll('[data-edit]').forEach(function (b) { b.onclick = function () { openPerson(b.dataset.edit); }; });
@@ -659,23 +735,73 @@
     $('pf-co').innerHTML = '<option value="">— Choose company —</option>' + cos.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('');
     $('pf-co').value = p ? p.company : '';
     $('pf-allowed').checked = !p || p.allowed !== false;
+    $('pf-nfc').value = p && p.nfc ? p.nfc : '';
+    $('pf-nfc-msg').textContent = nfcSupported() ? '' : 'Reading and writing tags works in Chrome on an Android phone with NFC. You can also type the tag number.';
     $('pf-remove').hidden = !p;
     $('pf-error').textContent = cos.length ? '' : 'Add the companies first (Companies tab).';
     $('dlg-person').showModal();
     setTimeout(function () { $('pf-name').focus(); }, 50);
   }
   $('pf-close').onclick = function () { $('dlg-person').close(); };
+  $('dlg-person').addEventListener('close', stopTagTool);
+
+  // ------------------------------------------------------------------ linking an NFC tag to a card
+  var tagTool = null;
+  function normTag(v) { var s = String(v || '').replace(/[\s:\-]/g, '').toUpperCase(); return /^[0-9A-Z]{4,40}$/.test(s) ? s : ''; }
+  function stopTagTool() { if (tagTool) { try { tagTool.abort(); } catch (e) { /* stopped */ } tagTool = null; } }
+  function tagToolStart(text) {
+    stopTagTool();
+    stopNfc(); // only one NFC reader at a time
+    var ctrl = new AbortController();
+    tagTool = ctrl;
+    setTimeout(function () { if (tagTool === ctrl) { stopTagTool(); $('pf-nfc-msg').textContent = 'No tag was found. Try again.'; } }, 30000);
+    $('pf-nfc-msg').textContent = text;
+    return ctrl;
+  }
+  $('pf-nfc-read').onclick = function () {
+    var ctrl = tagToolStart('Hold the tag against the back of the phone…');
+    readTags(function (code, serial) {
+      if (tagTool !== ctrl) return;
+      var id = normTag(serial) || normTag(code);
+      stopTagTool();
+      if (!id) { $('pf-nfc-msg').textContent = 'This tag has no number that can be used. Try another tag.'; return; }
+      $('pf-nfc').value = id; vibrate(60);
+      $('pf-nfc-msg').textContent = '✅ Tag read. Press Save to link it to this card.';
+    }, ctrl).catch(function (err) { if (tagTool === ctrl) { stopTagTool(); $('pf-nfc-msg').textContent = err.message; } });
+  };
+  $('pf-nfc-write').onclick = function () {
+    if (!nfcSupported()) { $('pf-nfc-msg').textContent = 'Writing tags works in Chrome on an Android phone with NFC.'; return; }
+    var ctrl = tagToolStart('Hold the tag against the back of the phone to write ' + editing.code + '…');
+    new window.NDEFReader().write({ records: [{ recordType: 'text', data: editing.code }] }, { signal: ctrl.signal }).then(function () {
+      if (tagTool !== ctrl) return;
+      stopTagTool(); vibrate(60);
+      $('pf-nfc-msg').textContent = '✅ ' + editing.code + ' was written on the tag. It now works at every gate as this card.';
+    }, function (err) {
+      if (tagTool !== ctrl) return;
+      stopTagTool();
+      $('pf-nfc-msg').textContent = 'The tag could not be written' + (err && err.name === 'NotAllowedError' ? ' (NFC is not allowed for this site).' : ' (it may be locked or read-only). You can still link it with "Read tag".');
+    });
+  };
   $('person-form').onsubmit = function (e) {
     e.preventDefault();
     var name = $('pf-name').value.trim(), room = $('pf-room').value.trim(), co = $('pf-co').value, hall = $('pf-hall').value;
     if (!name) { $('pf-error').textContent = 'Enter the name.'; return; }
     if (!room) { $('pf-error').textContent = 'Enter the room.'; return; }
     if (!co) { $('pf-error').textContent = 'Choose the company.'; return; }
+    var rawTag = $('pf-nfc').value.trim(), tag = normTag(rawTag);
+    if (rawTag && !tag) { $('pf-error').textContent = 'The NFC tag number should be 4 to 40 letters or digits.'; return; }
     var p = editing.person && people().indexOf(editing.person) >= 0 ? editing.person : findByCode(editing.code);
-    if (p) Object.assign(p, { name: name, room: room, company: co, hall: hall, allowed: $('pf-allowed').checked });
-    else {
+    var other = tag ? people().find(function (x) { return x !== p && normTag(x.nfc) === tag; }) : null;
+    if (other && !confirm('This NFC tag is linked to ' + other.name + ' (' + other.barcode + ').\n\nMove it to this card?')) return;
+    if (other) delete other.nfc;
+    if (p) {
+      Object.assign(p, { name: name, room: room, company: co, hall: hall, allowed: $('pf-allowed').checked });
+      if (tag) p.nfc = tag; else delete p.nfc;
+    } else {
       if (!Array.isArray(D.people)) D.people = [];
-      D.people.push({ id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: name, company: co, room: room, hall: hall, barcode: editing.code, allowed: $('pf-allowed').checked });
+      var np = { id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: name, company: co, room: room, hall: hall, barcode: editing.code, allowed: $('pf-allowed').checked };
+      if (tag) np.nfc = tag;
+      D.people.push(np);
     }
     save(); $('dlg-person').close(); renderCards();
     toast('✅ ' + name + ' saved');
@@ -738,6 +864,14 @@
     save(); toast('Settings saved');
   };
 
+  // ------------------------------------------------------------------ backup download
+  $('bk-range').onclick = function () {
+    var from = $('bk-from').value, to = $('bk-to').value;
+    if (!from || !to) { toast('Choose both dates'); return; }
+    if (from > to) { var t = from; from = to; to = t; }
+    location.href = '/api/dining/backup?from=' + from + '&to=' + to;
+  };
+
   $('rel-btn').onclick = function () {
     var hall = $('rel-hall').value;
     if (!confirm('Let everybody who already entered ' + (hall ? hallOf(hall).label : 'any dining hall') + ' today in once more?\n\nToday\'s meals stay counted.')) return;
@@ -758,7 +892,7 @@
       });
     })).then(function (list) {
       var bad = list.filter(function (x) { return x.error || !x.content || (!Array.isArray(x.content.people) && !Array.isArray(x.content.entryLog)); });
-      if (bad.length) { $('imp-choose').innerHTML = '<div class="error">Not a Mess Hall backup: ' + esc(bad.map(function (x) { return x.name; }).join(', ')) + '</div>'; $('imp-btn').disabled = true; return; }
+      if (bad.length) { $('imp-choose').innerHTML = '<div class="error">Not a Dining Halls / Mess Hall backup: ' + esc(bad.map(function (x) { return x.name; }).join(', ')) + '</div>'; $('imp-btn').disabled = true; return; }
       S.importFiles = list;
       var most = 0;
       list.forEach(function (x, i) { if ((x.content.people || []).length > (list[most].content.people || []).length) most = i; });

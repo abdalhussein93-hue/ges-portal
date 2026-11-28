@@ -78,8 +78,20 @@ function poolNumber(code) {
   return m ? Number(m[1]) : 0;
 }
 
-const INDEX = new WeakMap(); // people array -> Map(barcode -> person)
-/** The person holding this card, or null. */
+/**
+ * NFC tag id as stored and compared: the tag's serial number without separators, upper case
+ * ("04:a2:3b:91" -> "04A23B91"). '' if it cannot be one.
+ */
+function normNfc(value) {
+  const s = String(value == null ? '' : value).replace(/[\s:\-]/g, '').toUpperCase();
+  return /^[0-9A-Z]{4,40}$/.test(s) ? s : '';
+}
+
+const INDEX = new WeakMap(); // people array -> Map(card barcode / 'NFC:' + tag id -> person)
+/**
+ * The person holding this card, or null. `code` is a card barcode or an NFC tag id
+ * (a tag may also carry the card's barcode as text).
+ */
 function findPerson(doc, code) {
   const people = doc && Array.isArray(doc.people) ? doc.people : [];
   let map = INDEX.get(people);
@@ -88,10 +100,13 @@ function findPerson(doc, code) {
     for (const p of people) {
       const b = p && normBarcode(p.barcode);
       if (b && !map.has(b)) map.set(b, p);
+      const n = p && normNfc(p.nfc);
+      if (n && !map.has('NFC:' + n)) map.set('NFC:' + n, p);
     }
     INDEX.set(people, map);
   }
-  return map.get(code) || null;
+  const nfc = normNfc(code);
+  return map.get(code) || (nfc && map.get('NFC:' + nfc)) || null;
 }
 
 /** The old app called the first worker hall "Worker". */
@@ -121,7 +136,10 @@ function fromLegacyBackup(file, settings = DEFAULT_SETTINGS) {
     if (!barcode || seenCards.has(barcode)) continue;
     if (!id || seenIds.has(id)) id = `p${people.length + 1}_${barcode}`;
     seenIds.add(id); seenCards.add(barcode);
-    people.push({ id, name: text(p.name), company: text(p.company), room: text(p.room, 40), hall: legacyHall(p.category || p.hall), barcode, allowed: p.allowed !== false });
+    const person = { id, name: text(p.name), company: text(p.company), room: text(p.room, 40), hall: legacyHall(p.category || p.hall), barcode, allowed: p.allowed !== false };
+    const nfc = normNfc(p.nfc);
+    if (nfc) person.nfc = nfc;
+    people.push(person);
   }
   let top = FIRST_POOL;
   for (const b of Array.isArray(file.barcodePool) ? file.barcodePool : []) top = Math.max(top, poolNumber(b && b.barcode));
@@ -141,7 +159,7 @@ function fromLegacyBackup(file, settings = DEFAULT_SETTINGS) {
     scans.push({
       at, day, meal, slot: meal, hall: legacyHall(e.mess), barcode, personId: null,
       name: name === 'Unknown' ? '' : name, company: text(e.company), room: '',
-      status: e.status, reason: text(e.note), scannedBy: '', scannedByName: text(e.scannedBy, 80),
+      status: e.status, reason: text(e.note), scannedBy: '', scannedByName: text(e.scannedBy, 80), method: e.method === 'nfc' ? 'nfc' : 'code',
       legacyKey: `${e.barcode}_${e.time}_${e.mess}_${e.status}`.slice(0, 300),
     });
   }
@@ -151,5 +169,5 @@ function fromLegacyBackup(file, settings = DEFAULT_SETTINGS) {
 
 module.exports = {
   TIME_ZONE, HALLS, HALL_IDS, MEALS, DEFAULT_SETTINGS, FIRST_POOL,
-  localParts, isDay, settingsOf, mealOf, slotOf, normBarcode, poolCode, poolNumber, findPerson, legacyHall, fromLegacyBackup,
+  localParts, isDay, settingsOf, mealOf, slotOf, normBarcode, normNfc, poolCode, poolNumber, findPerson, legacyHall, fromLegacyBackup,
 };

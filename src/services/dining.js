@@ -55,23 +55,27 @@ class DiningService {
 
   /**
    * One scan at a gate.
-   * @param {{hall: string, barcode: string, decision?: 'allow'|'deny'}} input
+   * @param {{hall: string, barcode: string, method?: 'code'|'nfc', decision?: 'allow'|'deny'}} input
+   *   barcode: what was read - a card barcode, or an NFC tag id (or the card barcode written on the tag)
    *   decision: the guard's answer for a card that belongs to nobody
    * @returns {Promise<object>} {result: 'allowed'|'denied'|'unregistered', code, title, reason, person, previousAt, counts}
    */
   async scan(user, role, input) {
     const hall = String((input && input.hall) || '');
     if (!Dining.HALL_IDS.has(hall)) throw new UserError('Choose the dining hall first.');
-    const barcode = Dining.normBarcode(input && input.barcode);
-    if (!barcode) throw new UserError('This is not a valid barcode.');
+    const read = Dining.normBarcode(input && input.barcode);
+    if (!read) throw new UserError('This is not a valid barcode.');
+    const method = input && input.method === 'nfc' ? 'nfc' : 'code';
     const decision = input && input.decision;
     if (decision !== undefined && decision !== 'allow' && decision !== 'deny') throw new UserError('Bad request.');
 
     const doc = this.setup();
     const { at, day, meal, slot, settings } = this.clock();
-    const person = Dining.findPerson(doc, barcode);
+    const person = Dining.findPerson(doc, read);
+    // one person = one card: an NFC tag counts as the card it is linked to
+    const barcode = person ? Dining.normBarcode(person.barcode) || read : read;
     const base = {
-      at, day, meal, slot, hall, barcode, personId: person ? String(person.id) : null,
+      at, day, meal, slot, hall, barcode, method, personId: person ? String(person.id) : null,
       name: person ? person.name || '' : '', company: person ? person.company || '' : '', room: person ? person.room || '' : '',
       scannedBy: user.username, scannedByName: user.name || user.username, source: 'scan',
     };
@@ -85,7 +89,7 @@ class DiningService {
     };
 
     if (!person) {
-      if (!decision) return { result: 'unregistered', barcode, hall, meal, canAllow: settings.allowUnregistered || role === 'admin' };
+      if (!decision) return { result: 'unregistered', barcode, hall, meal, method, canAllow: settings.allowUnregistered || role === 'admin' };
       if (decision === 'deny') return deny('manual-deny', 'DENIED', 'Card not registered - denied by security');
       if (!settings.allowUnregistered && role !== 'admin') {
         throw new UserError('Letting in cards that are not registered is switched off. Ask an Admin.', 403);
@@ -115,7 +119,7 @@ class DiningService {
     this.live.broadcast(APP_ID, 'scan', { hall: row.hall, status: row.status, by: row.scannedBy });
     return {
       result: row.status, code: view.code, title: view.title, reason: view.reason, at: row.at, id: row.id,
-      hall: row.hall, meal: row.meal, barcode: row.barcode, person: personView(view.person),
+      hall: row.hall, meal: row.meal, barcode: row.barcode, method: row.method, person: personView(view.person),
       previousAt: view.previousAt || null, counts,
     };
   }
@@ -209,11 +213,57 @@ class DiningService {
       setupRev = await this.documents.replace(APP_ID, user.username, doc, `old app backup ${String(files[setupFrom].name || '').slice(0, 80)}`);
       this.live.broadcast(APP_ID, 'change', { rev: setupRev, by: user.username, clientId: '' });
     }
-    const all = parsed.flatMap(p => p.scans.map(s => Object.assign({}, s, cleanValue({ name: s.name, company: s.company, reason: s.reason, scannedByName: s.scannedByName }, 'markup').value)));
-    const added = await this.scans.insertImported(all);
-    await this.audit.record({ username: user.username, appId: APP_ID, action: 'dining-import', details: { files: files.length, records: all.length, added, setupRev }, ip });
+    const byKey = new Map(); // the same record in two files counts once
+    for (const p of parsed) {
+      for (const s of p.scans) {
+        if (!byKey.has(s.legacyKey)) byKey.set(s.legacyKey, Object.assign({}, s, cleanValue({ name: s.name, company: s.company, reason: s.reason, scannedByName: s.scannedByName }, 'markup').value));
+      }
+    }
+    const records = parsed.reduce((n, p) => n + p.scans.length, 0);
+    const added = await this.scans.insertImported([...byKey.values()]);
+    await this.audit.record({ username: user.username, appId: APP_ID, action: 'dining-import', details: { files: files.length, records, added, setupRev }, ip });
     if (added) this.live.broadcast(APP_ID, 'scan', { hall: '', status: 'imported', by: user.username });
-    return { files: files.length, records: all.length, added, skipped: all.length - added, people: setupRev ? parsed[setupFrom].doc.people.length : null, setupRev };
+    return { files: files.length, records, added, skipped: records - added, people: setupRev ? parsed[setupFrom].doc.people.length : null, setupRev };
+  }
+
+  /**
+   * Admin: a full backup file - people, cards, companies, settings and the scan records of the chosen
+   * dates (all dates when none are given). Same layout as the old Mess Hall app's backup, so it can
+   * be brought back in here ("Bring in backups": nothing is counted twice) or opened by the old app.
+   * Written in pieces, so a year of scans never has to fit in memory.
+   */
+  async backup(query, write) {
+    const f = {};
+    if (query.get('from') || query.get('to')) Object.assign(f, this.filter(query, true));
+    const doc = this.setup();
+    const settings = Dining.settingsOf(doc);
+    const next = Math.max(Number(doc.nextBarcode) || 0, Dining.FIRST_POOL + 1);
+    const people = (doc.people || []).map(p => Object.assign({}, p, { category: p.hall }));
+    const owner = new Map(people.map(p => [Dining.normBarcode(p.barcode), p.id]));
+    const pool = [];
+    for (let i = 1; i < next; i++) {
+      const code = Dining.poolCode(i);
+      pool.push({ barcode: code, assigned: owner.has(code), personId: owner.has(code) ? owner.get(code) : null });
+    }
+    const head = {
+      version: 1, app: 'Dining Halls Management', date: this.now().toISOString(),
+      range: f.from ? { from: f.from, to: f.to } : 'all', settings, nextBarcode: next,
+      companies: doc.companies || [], people, barcodePool: pool, entries: {},
+    };
+    let s = JSON.stringify(head);
+    await write(s.slice(0, -1) + ',"entryLog":[');
+    let first = true;
+    await this.scans.each(f, rows => {
+      const part = rows.map(r => JSON.stringify({
+        id: r.id, time: Date.parse(r.at), barcode: r.barcode, name: r.name || 'Unknown', company: r.company, room: r.room,
+        mess: r.hall, meal: r.meal, status: r.status, note: r.reason, scannedBy: r.scannedByName || r.scannedBy,
+        method: r.method, source: r.source, released: r.released,
+      })).join(',');
+      s = (first ? '' : ',') + part;
+      first = false;
+      return write(s);
+    });
+    await write(']}');
   }
 }
 

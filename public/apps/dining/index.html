@@ -45,7 +45,8 @@
       <div class="card-body">
         <div class="mode">
           <button type="button" id="mode-manual" class="on">⌨ Scanner / typing</button>
-          <button type="button" id="mode-camera">📷 Phone camera</button>
+          <button type="button" id="mode-camera">📷 Camera</button>
+          <button type="button" id="mode-nfc">📶 NFC</button>
         </div>
         <form id="manual" autocomplete="off">
           <input id="code" inputmode="text" autocapitalize="characters" placeholder="Scan or type the barcode…" aria-label="Barcode">
@@ -54,6 +55,10 @@
         <div id="camera" hidden>
           <div class="cam-view" id="cam-view"><video id="video" playsinline muted></video><div class="frame"></div></div>
           <div class="cam-msg" id="cam-msg">Point the camera at the barcode.</div>
+        </div>
+        <div id="nfc" hidden>
+          <div class="nfc-box" id="nfc-box"><div class="nfc-icon">📶</div><div id="nfc-msg">Hold the card against the back of the phone.</div></div>
+          <button type="button" class="btn-dark block" id="nfc-start" hidden>📶 Start NFC reading</button>
         </div>
       </div>
     </div>
@@ -203,9 +208,21 @@
       </div>
     </div>
     <div class="card">
-      <div class="card-head">⬆ Bring in the old app's backups</div>
+      <div class="card-head">💾 Download backup</div>
       <div class="card-body">
-        <p class="note">Choose the backup files (<b>mess_backup_….json</b>) from every phone and PC. All their scan records are added; a record already brought in is skipped, so nothing is counted twice.</p>
+        <p class="note">One file with the people, cards, companies, settings and the scan records. Keep it safe; it can be brought back in below (nothing is counted twice).</p>
+        <a class="btn-dark block" id="bk-all" href="/api/dining/backup">💾 Download everything</a>
+        <div class="row2" style="margin-top:12px">
+          <label class="field">From<input type="date" id="bk-from"></label>
+          <label class="field">To<input type="date" id="bk-to"></label>
+        </div>
+        <button type="button" class="btn-light block" id="bk-range">💾 Download only these dates</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head">⬆ Bring in backups</div>
+      <div class="card-body">
+        <p class="note">Choose backup files: the old app's (<b>mess_backup_….json</b>, from every phone and PC) or this app's (<b>dining_backup_….json</b>). All their scan records are added; a record already here is skipped, so nothing is counted twice.</p>
         <input type="file" id="imp-files" accept=".json,application/json" multiple>
         <div id="imp-choose"></div>
         <button type="button" class="btn-dark block" id="imp-btn" disabled>Bring in</button>
@@ -238,6 +255,12 @@
         <label class="field">Dining hall *<select id="pf-hall"></select></label>
       </div>
       <label class="field">Company *<select id="pf-co" required></select></label>
+      <label class="field">NFC tag (optional)<input id="pf-nfc" maxlength="40" placeholder="Tag number, or read it below" autocapitalize="characters"></label>
+      <div class="row2 nfc-tools">
+        <button type="button" class="btn-light" id="pf-nfc-read">📶 Read tag</button>
+        <button type="button" class="btn-light" id="pf-nfc-write">✍ Write card no. to tag</button>
+      </div>
+      <div class="note" id="pf-nfc-msg"></div>
       <label class="check"><input type="checkbox" id="pf-allowed"> Allowed to enter (untick to block)</label>
       <div class="error" id="pf-error"></div>
       <button type="submit" class="btn-green block">✅ Save</button>

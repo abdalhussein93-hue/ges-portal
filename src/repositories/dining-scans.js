@@ -2,7 +2,9 @@
 /** dining_scans table: one row per barcode scan at a dining hall gate. */
 
 const COLUMNS = ['at', 'day', 'meal', 'slot', 'hall', 'barcode', 'person_id', 'name', 'company', 'room', 'status', 'reason',
-  'scanned_by', 'scanned_by_name', 'source', 'legacy_key'];
+  'scanned_by', 'scanned_by_name', 'source', 'legacy_key', 'method'];
+/** SQL type of each column, for statements where PostgreSQL cannot infer it (VALUES lists). */
+const TYPES = { at: 'timestamptz', day: 'date' };
 const UNIQUE_VIOLATION = '23505';
 const BATCH = 500;
 
@@ -11,13 +13,13 @@ function rowOut(r) {
     id: Number(r.id), at: r.at instanceof Date ? r.at.toISOString() : r.at, day: r.day, meal: r.meal, hall: r.hall,
     barcode: r.barcode, personId: r.person_id, name: r.name, company: r.company, room: r.room,
     status: r.status, reason: r.reason, scannedBy: r.scanned_by, scannedByName: r.scanned_by_name,
-    source: r.source, released: !!r.released_at,
+    source: r.source, method: r.method || 'code', released: !!r.released_at,
   };
 }
 
 function values(s) {
   return [s.at, s.day, s.meal, s.slot, s.hall, s.barcode, s.personId || null, s.name || '', s.company || '', s.room || '',
-    s.status, s.reason || '', s.scannedBy || '', s.scannedByName || '', s.source || 'scan', s.legacyKey || null];
+    s.status, s.reason || '', s.scannedBy || '', s.scannedByName || '', s.source || 'scan', s.legacyKey || null, s.method === 'nfc' ? 'nfc' : 'code'];
 }
 
 /** WHERE clause for list / export filters. day is returned as text (YYYY-MM-DD) everywhere. */
@@ -38,7 +40,7 @@ function where(f, params) {
   return w.length ? 'WHERE ' + w.join(' AND ') : '';
 }
 
-const SELECT = 'SELECT id, at, day::text AS day, meal, hall, barcode, person_id, name, company, room, status, reason, scanned_by, scanned_by_name, source, released_at FROM dining_scans';
+const SELECT = 'SELECT id, at, day::text AS day, meal, hall, barcode, person_id, name, company, room, status, reason, scanned_by, scanned_by_name, source, method, released_at FROM dining_scans';
 
 class DiningScansRepository {
   constructor(db) { this.db = db; }
@@ -62,7 +64,7 @@ class DiningScansRepository {
   async insert(scan, client = this.db) {
     const params = values(scan);
     const sql = `INSERT INTO dining_scans (${COLUMNS.join(', ')}) VALUES (${COLUMNS.map((c, i) => (c === 'day' ? `$${i + 1}::date` : `$${i + 1}`)).join(', ')})
-      RETURNING id, at, day::text AS day, meal, hall, barcode, person_id, name, company, room, status, reason, scanned_by, scanned_by_name, source, released_at`;
+      RETURNING id, at, day::text AS day, meal, hall, barcode, person_id, name, company, room, status, reason, scanned_by, scanned_by_name, source, method, released_at`;
     try {
       const { rows } = await client.query(sql, params);
       return rowOut(rows[0]);
@@ -73,11 +75,14 @@ class DiningScansRepository {
   }
 
   /**
-   * Inserts imported records; records already imported (same legacy_key) are skipped.
+   * Inserts imported records. Skipped: a record already imported (same legacy_key), and a record the
+   * server already has (same card, hall, result and time to the millisecond - e.g. a backup
+   * downloaded from this app and brought back in).
    * @returns {Promise<number>} how many were added
    */
   async insertImported(scans) {
     let added = 0;
+    const cols = COLUMNS.join(', ');
     await this.db.transaction(async client => {
       for (let i = 0; i < scans.length; i += BATCH) {
         const chunk = scans.slice(i, i + BATCH);
@@ -86,9 +91,12 @@ class DiningScansRepository {
           const v = values(Object.assign({}, s, { source: 'import' }));
           const start = params.length;
           params.push(...v);
-          return '(' + v.map((x, j) => (COLUMNS[j] === 'day' ? `$${start + j + 1}::date` : `$${start + j + 1}`)).join(', ') + ')';
+          return '(' + v.map((x, j) => `$${start + j + 1}::${TYPES[COLUMNS[j]] || 'text'}`).join(', ') + ')';
         });
-        const r = await client.query(`INSERT INTO dining_scans (${COLUMNS.join(', ')}) VALUES ${rows.join(', ')}
+        const r = await client.query(`INSERT INTO dining_scans (${cols})
+          SELECT ${cols} FROM (VALUES ${rows.join(', ')}) AS v(${cols})
+          WHERE NOT EXISTS (SELECT 1 FROM dining_scans d WHERE d.barcode = v.barcode AND d.hall = v.hall AND d.status = v.status
+                            AND d.at >= v.at AND d.at < v.at + interval '1 millisecond')
           ON CONFLICT (legacy_key) WHERE legacy_key IS NOT NULL DO NOTHING`, params);
         added += r.rowCount;
       }

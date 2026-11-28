@@ -173,3 +173,12 @@ dialog::backdrop{background:rgba(5,12,25,.6)}
   .pcard .pn{font-weight:700;font-size:12px;margin-top:2px}
   .pcard .pi{font-size:10px;color:#555}
 }
+
+/* NFC */
+.mode button{padding:9px 4px}
+.nfc-box{border:2px dashed var(--navy3);border-radius:var(--r);padding:22px 12px;text-align:center;color:var(--text2);font-size:14px;font-weight:600;background:var(--gray)}
+.nfc-box.on{border-color:var(--green);background:var(--green-bg);color:var(--green-text)}
+.nfc-box.on .nfc-icon{animation:pulse 1.4s infinite}
+.nfc-icon{font-size:40px;margin-bottom:6px}
+.nfc-tools{margin-top:-2px}
+.nfc-tools button{padding:9px 6px;font-size:12.5px}

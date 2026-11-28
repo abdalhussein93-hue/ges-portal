@@ -162,6 +162,46 @@ describe('Dining Halls Management (PostgreSQL)', () => {
     assert.equal((await P.request('GET', '/api/dining/report?from=2026-11-28&to=2026-11-27', { cookie: viewer })).status, 400);
   });
 
+  it('NFC: a linked tag gets the person in, and counts as the same card as the barcode', async () => {
+    const { rev } = (await P.request('GET', '/api/apps/dining/data', { cookie: admin })).json;
+    let r = await P.request('POST', '/api/apps/dining/patch', { cookie: admin, body: { baseRev: rev, ops: [{ o: 's', p: ['people', { id: 'p1' }, 'nfc'], v: '04A23B91C2' }] } });
+    assert.equal(r.status, 200, r.text);
+    setClock(at('2026-11-29', '08:00'));
+    r = await P.request('POST', '/api/dining/scan', { cookie: guard, body: { hall: 'Senior', barcode: '04:a2:3b:91:c2', method: 'nfc' } });
+    assert.equal(r.json.result, 'allowed', r.text);
+    assert.equal(r.json.person.name, 'Ali Senior');
+    assert.equal(r.json.barcode, 'MH00001', 'recorded under the card');
+    assert.equal(r.json.method, 'nfc');
+    r = await scan(guard2, 'Senior', 'MH00001');
+    assert.equal(r.json.code, 'already', 'the barcode is the same person: no second meal');
+    r = await P.request('POST', '/api/dining/scan', { cookie: guard, body: { hall: 'Senior', barcode: 'MH00001', method: 'nfc' } });
+    assert.equal(r.json.code, 'already', 'a tag that carries the card number works too');
+    r = await P.request('POST', '/api/dining/scan', { cookie: guard, body: { hall: 'Senior', barcode: '04FFFFFF', method: 'nfc' } });
+    assert.equal(r.json.result, 'unregistered', 'an unknown tag is like an unknown card');
+    const rows = (await P.request('GET', '/api/dining/scans?from=2026-11-29&to=2026-11-29', { cookie: admin })).json.rows;
+    assert.deepEqual(rows.map(x => [x.barcode, x.method, x.status]).reverse(), [['MH00001', 'nfc', 'allowed'], ['MH00001', 'code', 'denied'], ['MH00001', 'nfc', 'denied']]);
+  });
+
+  it('the Admin downloads a backup; bringing it back in adds nothing twice', async () => {
+    assert.equal((await P.request('GET', '/api/dining/backup', { cookie: guard })).status, 403);
+    const res = await P.request('GET', '/api/dining/backup', { cookie: admin });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-disposition'), /dining_backup_all_/);
+    const file = JSON.parse(res.text);
+    const total = (await P.request('GET', '/api/dining/scans?from=2020-01-01&to=2030-12-31&limit=200', { cookie: admin })).json.rows.length;
+    assert.equal(file.entryLog.length, total);
+    assert.equal(file.barcodePool.length, 1000);
+    assert.equal(file.people.find(p => p.id === 'p1').nfc, '04A23B91C2');
+    assert.equal(file.people.find(p => p.id === 'p2').category, 'Worker1', 'the old app can open it too');
+    assert.equal(file.settings.entryRule, 'day');
+    const one = await P.request('GET', '/api/dining/backup?from=2026-11-29&to=2026-11-29', { cookie: admin });
+    assert.equal(JSON.parse(one.text).entryLog.length, 3);
+    const back = await P.request('POST', '/api/dining/import', { cookie: admin, body: { files: [{ name: 'dining_backup.json', content: file }], setupFrom: -1 } });
+    assert.equal(back.status, 200, back.text);
+    assert.deepEqual([back.json.records, back.json.added], [total, 0], 'every record is already here');
+    assert.equal((await P.request('GET', '/api/dining/scans?from=2020-01-01&to=2030-12-31&limit=200', { cookie: admin })).json.rows.length, total);
+  });
+
   it("the old app's backups are brought in once; the setup can be taken from one of them", async () => {
     const t1 = Date.parse('2026-10-01T05:00:00Z'), t2 = Date.parse('2026-10-01T09:00:00Z');
     const phone1 = { version: 1, barcodePool: [], companies: ['GAMMA'],
