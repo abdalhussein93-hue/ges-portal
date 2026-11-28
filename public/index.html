@@ -11,7 +11,7 @@
   body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;color:var(--text);background:var(--bg);font-size:14px}
   body{display:flex;min-height:100vh}
   /* ===== sidebar ===== */
-  .side{width:264px;flex:none;background:linear-gradient(180deg,#0b1f45,#0f2a5e);color:#cbd5e1;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:18px 12px;overflow-y:auto;z-index:30}
+  .side{width:284px;flex:none;background:linear-gradient(180deg,#0b1f45,#0f2a5e);color:#cbd5e1;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:18px 12px;overflow-y:auto;z-index:30}
   .side .brand{display:flex;align-items:center;gap:10px;padding:2px 8px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
   .side .brand img{width:34px;height:34px;border-radius:8px}
   .side .brand b{display:block;color:#fff;font-size:15px}
@@ -191,6 +191,7 @@
     dining: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v8a2 2 0 0 1-2 2v8"/><path d="M4 3v5a3 3 0 0 0 6 0V3"/><path d="M17 21V3c-2.2 1.3-3.5 4-3.5 7.5 0 2 1.2 3.5 3.5 3.5"/></svg>'
   };
   var DENIED = { camp: 'Camp Management', manpower: 'GES Manpower', costing: 'Daily Costing & Stock', duty: 'Duty Board', dining: 'Dining Halls Management' };
+  var SHORT = { camp: 'Camp Management', manpower: 'Manpower', costing: 'Daily Costing', duty: 'Duty Board', dining: 'Dining Halls' };
 
   // mobile menu
   function menu(open) { $('side').classList.toggle('open', open); $('scrim').classList.toggle('open', open); }
@@ -227,7 +228,7 @@
 
   function sideApps(apps) {
     $('sideApps').innerHTML = apps.map(function (a) {
-      var inner = '<span class="ico" style="--c:' + esc(a.color) + '">' + (ICONS[a.id] || '') + '</span><span class="nm">' + esc(a.name) + '</span>' +
+      var inner = '<span class="ico" style="--c:' + esc(a.color) + '">' + (ICONS[a.id] || '') + '</span><span class="nm" title="' + esc(a.name) + '">' + esc(SHORT[a.id] || a.name) + '</span>' +
         (a.online ? '<span class="on" title="' + a.online + ' online"></span>' : '') +
         '<span class="rl">' + (a.role ? Portal.ROLE_LABEL[a.role] : 'No access') + '</span>';
       return a.role ? '<a href="' + esc(a.path) + '" title="Open ' + esc(a.name) + '">' + inner + '</a>'
