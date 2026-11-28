@@ -8,7 +8,7 @@ One live web portal for the Global Emirates Services apps. Sign in once, pick an
 | **GES Manpower** | Staff list, transfers and resignations, vacation plan, monthly timesheet and salary |
 | **Daily Costing & Stock** | Kitchen stock, daily consumption, monthly prices, man-days, budget per cost centre, alerts |
 | **Duty Board** | Duty roster per department; department heads see only their department |
-| **Dining Halls Management** | DYCC dining hall gates: barcode cards, scanning on phones (camera or scanner), one meal per person, live counts, meal reports |
+| **Dining Halls Management** | Dining hall gates: barcode and NFC cards, scanning on phones (camera, scanner or NFC), one meal per person, live counts, meal reports |
 
 ### Dining Halls Management
 

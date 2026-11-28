@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Dining Halls Management (DYCC): barcode cards, people, companies and gate scanning.
+ * Dining Halls Management: barcode / NFC cards, people, companies and gate scanning.
  *
  * The document holds the setup (see domain/dining.js); every scan is a row in dining_scans,
  * written by the server (services/dining.js), never by the browser.
@@ -35,7 +35,7 @@ function importDocument(file) {
 module.exports = defineApp({
   id: 'dining',
   name: 'Dining Halls Management',
-  description: 'DYCC dining halls: barcode cards, gate scanning on phones, one meal per person, live counts and meal reports.',
+  description: 'Dining hall gates: barcode and NFC cards, scanning on phones, one meal per person, live counts and meal reports.',
   icon: 'ti-tools-kitchen-2',
   color: '#b45309',
   path: '/dining/',
