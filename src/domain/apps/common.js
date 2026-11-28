@@ -13,6 +13,8 @@
  *   prepareOps(role, user, ops, doc)        optional: adjust ops before saving -> {ops, changed}
  *   filterDoc(doc, role, user) / filterOps(ops, role, user)   remove what this user may not see
  *   scoped                                  true if access can be limited per department (user.scopes[id])
+ *   perCamp                                 true if each camp has its own set of data (see domain/camps.js)
+ *   checkPermission ctx also has `ops` (every op of the save) and user.campAccess (the person's camps)
  *   scopeLabel(doc, role, user)             optional: what this user can open, for the home page
  *   normalise(doc)                          fix data in place after a change; returns the top-level
  *                                           sections it changed (empty array = nothing)

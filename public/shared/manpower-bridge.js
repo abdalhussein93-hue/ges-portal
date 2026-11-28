@@ -14,7 +14,7 @@
  */
 (function () {
   'use strict';
-  var KV = window.GVCKV;
+  var KV = window.GVCKV, Portal = window.GESPortal;
 
   function userIsBusy() {
     var a = document.activeElement;
@@ -32,7 +32,7 @@
   // ---- timesheet workbook on the server (replaces the app's browser storage for it) ----
   function installWorkbookStorage() {
     window.tsDbPut = function (rec) {
-      var url = '/api/apps/manpower/files/workbook?fileName=' + encodeURIComponent(rec.name || '') + '&saved=' + encodeURIComponent(rec.saved || '');
+      var url = Portal.withCamp('/api/apps/manpower/files/workbook?fileName=' + encodeURIComponent(rec.name || '') + '&saved=' + encodeURIComponent(rec.saved || ''));
       return fetch(url, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: rec.data })
         .then(function (r) {
           if (r.ok) return;
@@ -40,7 +40,7 @@
         });
     };
     window.tsDbGet = function () {
-      return fetch('/api/apps/manpower/files/workbook', { credentials: 'same-origin' }).then(function (r) {
+      return fetch(Portal.withCamp('/api/apps/manpower/files/workbook'), { credentials: 'same-origin' }).then(function (r) {
         if (r.status === 404) return null;
         if (!r.ok) throw new Error('Could not load the timesheet file (' + r.status + ')');
         return r.arrayBuffer().then(function (buf) {

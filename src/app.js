@@ -10,16 +10,17 @@ const { send, json, redirect } = require('./http/response');
 const { StaticFiles, safeJoin } = require('./http/static-files');
 const { setSecurityHeaders, isCrossSite } = require('./http/security');
 const { UserError } = require('./domain/apps/common');
+const Camps = require('./domain/camps');
 
 const COOKIE = 'ges_sid';
 const SMALL_JSON = 64 * 1024;
 
 /**
- * @param {object} deps  {config, apps, auth, userAdmin, users, documents, files, live, audit, dining}
+ * @param {object} deps  {config, apps, auth, userAdmin, users, documents, files, live, audit, dining, camps}
  * @returns {(req, res) => void}
  */
 function createApp(deps) {
-  const { config, apps, auth } = deps;
+  const { config, apps, auth, camps } = deps;
   const staticFiles = new StaticFiles();
   const router = new Router();
   const shared = Object.assign({ staticFiles }, deps);
@@ -62,7 +63,8 @@ function createApp(deps) {
       else ctx.redirect(`/login?next=${encodeURIComponent(ctx.url.pathname)}`);
       return false;
     }
-    ctx.user = found.user;
+    // the camps this person may use, worked out once per request: {all, ids, names, list}
+    ctx.user = Object.assign({}, found.user, { campAccess: Camps.accessFor(found.user, camps ? camps.list() : []) });
     ctx.session = found.session;
     if (ctx.user.mustChange && !options.allowMustChange) {
       if (isApi) ctx.json(403, { error: 'Please choose a new password first.', mustChange: true });

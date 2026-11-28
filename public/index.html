@@ -87,7 +87,8 @@
     document.getElementById('logout').onclick = function () {
       Portal.api('POST', '/api/logout', {}).catch(function () { }).then(function () { location.href = '/login'; });
     };
-    document.getElementById('foot').textContent = 'Signed in as ' + me.username + (me.isAdmin ? ' (portal admin)' : '');
+    document.getElementById('foot').textContent = 'Signed in as ' + me.username + (me.isAdmin ? ' (portal admin)' : '') +
+      ' · Camps: ' + ((me.camps || []).map(function (c) { return c.name; }).join(', ') || 'none yet - ask a portal admin');
     return Portal.api('GET', '/api/apps');
   }).then(function (apps) {
     if (!apps) return;

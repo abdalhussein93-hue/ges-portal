@@ -44,6 +44,7 @@ async function startPortal(url, overrides) {
   const container = await createContainer(config, { log: () => { } });
   await container.userAdmin.ensureFirstAdmin(config.admin);
   await container.documents.init();
+  await container.camps.init();
   const server = http.createServer(createApp(container));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;

@@ -280,6 +280,7 @@ function importDocument(file) {
 
 module.exports = defineApp({
   id: 'costing',
+  perCamp: true, // a separate set of data per camp (see domain/camps.js)
   name: 'Daily Costing & Stock',
   description: 'Kitchen stock, daily consumption, monthly prices, man-days, budget per cost centre and alerts.',
   icon: 'ti-tools-kitchen-2',

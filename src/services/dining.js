@@ -5,10 +5,14 @@
  * Every scan is decided here on the server (never on the phone), so all gates see the same
  * entries: a person refused at one gate is refused at every gate. The database's unique index
  * refuses a second entry even if two gates scan the same card at the same moment.
+ *
+ * Every camp has its own Dining Halls: its own setup (people, cards, settings) and its own scans.
+ * Each method takes the camp id first.
  */
 const { UserError } = require('../domain/apps/common');
 const { cleanValue } = require('../domain/text');
 const Dining = require('../domain/dining');
+const Camps = require('../domain/camps');
 
 const APP_ID = 'dining';
 const MAX_LIST = 200;
@@ -37,15 +41,17 @@ class DiningService {
     this.now = now;
   }
 
-  setup() {
-    const { doc } = this.documents.get(APP_ID);
+  key(campId) { return Camps.docKey(APP_ID, campId); }
+
+  setup(campId) {
+    const { doc } = this.documents.get(this.key(campId));
     if (!doc) throw new UserError('Dining Halls has not been set up yet. An Admin of this app must open it first.', 409);
     return doc;
   }
 
   /** Today in camp time, the current meal and the settings. */
-  clock() {
-    const doc = this.documents.get(APP_ID).doc;
+  clock(campId) {
+    const doc = this.documents.get(this.key(campId)).doc;
     const settings = Dining.settingsOf(doc);
     const at = this.now();
     const { day, hour } = Dining.localParts(at);
@@ -60,7 +66,7 @@ class DiningService {
    *   decision: the guard's answer for a card that belongs to nobody
    * @returns {Promise<object>} {result: 'allowed'|'denied'|'unregistered', code, title, reason, person, previousAt, counts}
    */
-  async scan(user, role, input) {
+  async scan(campId, user, role, input) {
     const hall = String((input && input.hall) || '');
     if (!Dining.HALL_IDS.has(hall)) throw new UserError('Choose the dining hall first.');
     const read = Dining.normBarcode(input && input.barcode);
@@ -69,21 +75,21 @@ class DiningService {
     const decision = input && input.decision;
     if (decision !== undefined && decision !== 'allow' && decision !== 'deny') throw new UserError('Bad request.');
 
-    const doc = this.setup();
-    const { at, day, meal, slot, settings } = this.clock();
+    const doc = this.setup(campId);
+    const { at, day, meal, slot, settings } = this.clock(campId);
     const person = Dining.findPerson(doc, read);
     // one person = one card: an NFC tag counts as the card it is linked to
     const barcode = person ? Dining.normBarcode(person.barcode) || read : read;
     const base = {
-      at, day, meal, slot, hall, barcode, method, personId: person ? String(person.id) : null,
+      campId, at, day, meal, slot, hall, barcode, method, personId: person ? String(person.id) : null,
       name: person ? person.name || '' : '', company: person ? person.company || '' : '', room: person ? person.room || '' : '',
       scannedBy: user.username, scannedByName: user.name || user.username, source: 'scan',
     };
-    const entryKey = { day, hall, barcode, slot: settings.entryRule === 'day' ? null : slot };
+    const entryKey = { campId, day, hall, barcode, slot: settings.entryRule === 'day' ? null : slot };
     const deny = (code, title, reason, previousAt) => this.record(base, { status: 'denied', reason }, { code, title, reason, person, previousAt });
     const allow = async (code, title, reason) => {
       const row = await this.scans.insert(Object.assign({}, base, { status: 'allowed', reason }));
-      if (row) return this.answer(row, { code, title, reason, person }, day);
+      if (row) return this.answer(campId, row, { code, title, reason, person }, day);
       const first = await this.scans.findEntry(entryKey); // another gate let this card in a moment ago
       return deny('already', 'ALREADY ENTERED', this.alreadyText(meal, settings), first && first.at);
     };
@@ -111,12 +117,12 @@ class DiningService {
 
   async record(base, extra, view) {
     const row = await this.scans.insert(Object.assign({}, base, extra));
-    return this.answer(row, view, base.day);
+    return this.answer(base.campId, row, view, base.day);
   }
 
-  async answer(row, view, day) {
-    const counts = await this.scans.dayCounts(day);
-    this.live.broadcast(APP_ID, 'scan', { hall: row.hall, status: row.status, by: row.scannedBy });
+  async answer(campId, row, view, day) {
+    const counts = await this.scans.dayCounts(campId, day);
+    this.live.broadcast(this.key(campId), 'scan', { hall: row.hall, status: row.status, by: row.scannedBy });
     return {
       result: row.status, code: view.code, title: view.title, reason: view.reason, at: row.at, id: row.id,
       hall: row.hall, meal: row.meal, barcode: row.barcode, method: row.method, person: personView(view.person),
@@ -125,15 +131,15 @@ class DiningService {
   }
 
   /** Numbers for today (camp time). */
-  async today() {
-    const { day, meal, settings } = this.clock();
-    const counts = await this.scans.dayCounts(day);
+  async today(campId) {
+    const { day, meal, settings } = this.clock(campId);
+    const counts = await this.scans.dayCounts(campId, day);
     return { day, meal, entryRule: settings.entryRule, counts };
   }
 
   /** Scan records, newest first. */
-  async list(query) {
-    const f = this.filter(query, false);
+  async list(campId, query) {
+    const f = Object.assign(this.filter(query, false), { campId });
     const limit = Math.min(Math.max(Number(query.get('limit')) || 100, 1), MAX_LIST);
     const beforeId = Number(query.get('beforeId'));
     if (Number.isInteger(beforeId) && beforeId > 0) f.beforeId = beforeId;
@@ -158,16 +164,16 @@ class DiningService {
   }
 
   /** Meals per day / meal / hall and per company, for a date range. */
-  async report(query) {
+  async report(campId, query) {
     const { from, to } = this.filter(query, true);
     if (daysBetween(from, to) > MAX_REPORT_DAYS) throw new UserError(`Choose at most ${MAX_REPORT_DAYS} days.`);
-    const r = await this.scans.report(from, to);
-    return { from, to, halls: Dining.HALLS, meals: Dining.MEALS, daily: r.daily, byCompany: r.byCompany, firstDay: await this.scans.firstDay() };
+    const r = await this.scans.report(campId, from, to);
+    return { from, to, halls: Dining.HALLS, meals: Dining.MEALS, daily: r.daily, byCompany: r.byCompany, firstDay: await this.scans.firstDay(campId) };
   }
 
   /** Writes every scan in the range as CSV (Excel opens it). */
-  async exportCsv(query, write) {
-    const f = this.filter(query, true);
+  async exportCsv(campId, query, write) {
+    const f = Object.assign(this.filter(query, true), { campId });
     const cell = v => {
       let s = String(v == null ? '' : v);
       if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; // never a formula in Excel
@@ -182,12 +188,12 @@ class DiningService {
   }
 
   /** Admin: lets people in again today (one hall or all). */
-  async release(user, hall, ip) {
+  async release(campId, user, hall, ip) {
     if (hall && !Dining.HALL_IDS.has(hall)) throw new UserError('Unknown dining hall.');
-    const { day } = this.clock();
-    const n = await this.scans.release({ day, hall: hall || null, username: user.username });
-    await this.audit.record({ username: user.username, appId: APP_ID, action: 'dining-release', details: { day, hall: hall || 'all', entries: n }, ip });
-    this.live.broadcast(APP_ID, 'scan', { hall: hall || '', status: 'released', by: user.username });
+    const { day } = this.clock(campId);
+    const n = await this.scans.release({ campId, day, hall: hall || null, username: user.username });
+    await this.audit.record({ username: user.username, appId: this.key(campId), action: 'dining-release', details: { day, hall: hall || 'all', entries: n }, ip });
+    this.live.broadcast(this.key(campId), 'scan', { hall: hall || '', status: 'released', by: user.username });
     return { day, released: n };
   }
 
@@ -196,9 +202,10 @@ class DiningService {
    * (a record already imported is skipped). `setupFrom` = index of the file whose people, cards and
    * companies replace the current setup (-1 = keep the current setup).
    */
-  async importBackups(user, files, setupFrom, ip) {
+  async importBackups(campId, user, files, setupFrom, ip) {
     if (!Array.isArray(files) || !files.length || files.length > 50) throw new UserError('Choose 1 to 50 backup files.');
-    const settings = Dining.settingsOf(this.documents.get(APP_ID).doc);
+    const key = this.key(campId);
+    const settings = Dining.settingsOf(this.documents.get(key).doc);
     const parsed = files.map((f, i) => {
       const r = Dining.fromLegacyBackup(f && f.content, settings);
       if (!r) throw new UserError(`"${String((f && f.name) || `file ${i + 1}`).slice(0, 80)}" is not a Mess Hall backup file.`);
@@ -207,11 +214,11 @@ class DiningService {
     let setupRev = null;
     if (Number.isInteger(setupFrom) && setupFrom >= 0) {
       if (!parsed[setupFrom]) throw new UserError('Choose which file the people and cards come from.');
-      const current = this.documents.get(APP_ID).doc;
+      const current = this.documents.get(key).doc;
       const doc = cleanValue(parsed[setupFrom].doc, 'markup').value;
       if (current && current.settings) doc.settings = current.settings; // keep the settings already chosen
-      setupRev = await this.documents.replace(APP_ID, user.username, doc, `old app backup ${String(files[setupFrom].name || '').slice(0, 80)}`);
-      this.live.broadcast(APP_ID, 'change', { rev: setupRev, by: user.username, clientId: '' });
+      setupRev = await this.documents.replace(key, user.username, doc, `backup file ${String(files[setupFrom].name || '').slice(0, 80)}`);
+      this.live.broadcast(key, 'change', { rev: setupRev, by: user.username, clientId: '' });
     }
     const byKey = new Map(); // the same record in two files counts once
     for (const p of parsed) {
@@ -220,9 +227,9 @@ class DiningService {
       }
     }
     const records = parsed.reduce((n, p) => n + p.scans.length, 0);
-    const added = await this.scans.insertImported([...byKey.values()]);
-    await this.audit.record({ username: user.username, appId: APP_ID, action: 'dining-import', details: { files: files.length, records, added, setupRev }, ip });
-    if (added) this.live.broadcast(APP_ID, 'scan', { hall: '', status: 'imported', by: user.username });
+    const added = await this.scans.insertImported(campId, [...byKey.values()]);
+    await this.audit.record({ username: user.username, appId: key, action: 'dining-import', details: { files: files.length, records, added, setupRev }, ip });
+    if (added) this.live.broadcast(key, 'scan', { hall: '', status: 'imported', by: user.username });
     return { files: files.length, records, added, skipped: records - added, people: setupRev ? parsed[setupFrom].doc.people.length : null, setupRev };
   }
 
@@ -232,10 +239,10 @@ class DiningService {
    * be brought back in here ("Bring in backups": nothing is counted twice) or opened by the old app.
    * Written in pieces, so a year of scans never has to fit in memory.
    */
-  async backup(query, write) {
-    const f = {};
+  async backup(campId, campName, query, write) {
+    const f = { campId };
     if (query.get('from') || query.get('to')) Object.assign(f, this.filter(query, true));
-    const doc = this.setup();
+    const doc = this.setup(campId);
     const settings = Dining.settingsOf(doc);
     const next = Math.max(Number(doc.nextBarcode) || 0, Dining.FIRST_POOL + 1);
     const people = (doc.people || []).map(p => Object.assign({}, p, { category: p.hall }));
@@ -246,7 +253,7 @@ class DiningService {
       pool.push({ barcode: code, assigned: owner.has(code), personId: owner.has(code) ? owner.get(code) : null });
     }
     const head = {
-      version: 1, app: 'Dining Halls Management', date: this.now().toISOString(),
+      version: 1, app: 'Dining Halls Management', camp: campName, date: this.now().toISOString(),
       range: f.from ? { from: f.from, to: f.to } : 'all', settings, nextBarcode: next,
       companies: doc.companies || [], people, barcodePool: pool, entries: {},
     };

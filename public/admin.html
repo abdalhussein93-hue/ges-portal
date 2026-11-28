@@ -60,6 +60,7 @@
 <main>
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" aria-selected="true" data-t="users">👥 Users</button>
+    <button class="tab" role="tab" aria-selected="false" data-t="camps">🏕 Camps</button>
     <button class="tab" role="tab" aria-selected="false" data-t="backups">🗄 Backups &amp; import</button>
     <button class="tab" role="tab" aria-selected="false" data-t="activity">🕘 Activity log</button>
   </div>
@@ -72,11 +73,13 @@
           <div class="field"><label for="nu">Username</label><input id="nu" required pattern="[a-z0-9._\-]{3,32}" placeholder="e.g. ahmed.k" autocapitalize="none" spellcheck="false"></div>
           <div class="field"><label for="nn">Full name</label><input id="nn" placeholder="e.g. Ahmed Khan"></div>
           <div id="newRoles" class="row"></div>
+          <div class="field"><label>Camps</label><div id="newCamps" class="row"></div></div>
           <div class="field"><label for="na">Portal admin</label><input type="checkbox" id="na"></div>
           <div class="field"><button class="btn btn-blue" type="submit">＋ Create user</button></div>
         </div>
       </form>
-      <p class="note">A temporary password is created; the person chooses their own at first sign-in. A portal admin manages users and backups and is Admin in every app.</p>
+      <p class="note">A temporary password is created; the person chooses their own at first sign-in. A portal admin manages users and backups and is Admin in every app and every camp.
+        Everyone else only sees the <b>camps you tick</b>, in every app.</p>
       <div class="secret" id="secret" role="status"></div>
       <div class="msg" id="addMsg" role="alert"></div>
     </div>
@@ -92,16 +95,36 @@
         <li><b>Viewer</b> – can look at everything (in Camp: except Location Profit) but cannot change anything.</li>
         <li><b>Operator</b> – Camp: check in/out, reservations, resident details, room sizes, bathrooms, housekeeping. Manpower and Costing: can change data.</li>
         <li><b>Admin</b> – everything inside that app (Camp: blocks, rooms, capacity, companies, camps, deleting log records, profit; Costing: clearing a day).</li>
+        <li><b>Camps</b> – a person only sees the <b>camps ticked for them</b>, in every app: Camp Management shows only those camps' blocks, rooms and records;
+          Manpower, Costing, Duty Board and Dining Halls let them open only those camps' data. Their role in an app is the same in all their camps.</li>
         <li><b>Duty Board</b> – an Admin sees and manages <b>all departments</b>. An Operator (department head) or Viewer only sees the
           <b>departments you tick</b> with the <b>Departments</b> button: Operators edit them, Viewers only look.</li>
       </ul>
     </div>
   </section>
 
+  <section id="t-camps" hidden>
+    <div class="card">
+      <h2>Camps</h2>
+      <p class="note">Every app uses this list. <b>Camp Management</b> keeps all camps together (each block belongs to a camp);
+        <b>Manpower, Daily Costing, Duty Board and Dining Halls</b> keep separate data for each camp: a new camp starts empty there
+        (its Admin sets it up, or imports a file in Backups &amp; import). People only see the camps ticked for them on the Users tab.</p>
+      <div class="tbl" style="margin-top:10px"><table id="campTbl"><thead><tr><th>Camp</th><th>Id</th><th>People with access</th></tr></thead><tbody></tbody></table></div>
+      <form id="campForm" class="row" style="margin-top:12px" autocomplete="off">
+        <div class="field"><label for="campName">New camp name</label><input id="campName" maxlength="60" placeholder="e.g. DYCC" required></div>
+        <div class="field"><button class="btn btn-blue" type="submit">＋ Add camp</button></div>
+      </form>
+      <div class="msg" id="campMsg" role="alert"></div>
+    </div>
+  </section>
+
   <section id="t-backups" hidden>
     <div class="card">
       <div class="row" style="justify-content:space-between">
-        <div class="field"><label for="bkApp">App</label><select id="bkApp"></select></div>
+        <div class="row">
+          <div class="field"><label for="bkApp">App</label><select id="bkApp"></select></div>
+          <div class="field" id="bkCampF"><label for="bkCamp">Camp</label><select id="bkCamp"></select></div>
+        </div>
         <div class="row">
           <button class="btn btn-ghost" id="bkNow">💾 Back up now</button>
           <a class="btn btn-ghost" id="bkExport" href="#">⬇ Download current data</a>
@@ -120,6 +143,7 @@
         This <b>replaces all data of the chosen app</b>. The current data is kept as a backup first, and everyone using that app reloads.</p>
       <div class="row" style="margin-top:12px">
         <div class="field"><label for="impApp">App</label><select id="impApp"></select></div>
+        <div class="field" id="impCampF"><label for="impCamp">Camp</label><select id="impCamp"></select></div>
         <div class="field"><label for="impFile">File</label><input type="file" id="impFile" accept=".json,application/json"></div>
         <div class="field"><button class="btn btn-red" id="impBtn">⬆ Import and replace</button></div>
       </div>
@@ -141,7 +165,7 @@
   'use strict';
   var Portal = window.GESPortal, esc = Portal.esc, api = Portal.api;
   var $ = function (id) { return document.getElementById(id); };
-  var me = null, apps = [], userList = [];
+  var me = null, apps = [], userList = [], camps = [];
   var ROLES = ['', 'viewer', 'operator', 'admin'];
 
   function when(iso) {
@@ -155,7 +179,15 @@
       return '<option value="' + r + '"' + (r === (value || '') ? ' selected' : '') + '>' + (r ? Portal.ROLE_LABEL[r] : 'No access') + '</option>';
     }).join('') + '</select>';
   }
-  function appName(id) { var a = apps.find(function (x) { return x.id === id; }); return a ? a.name : (id || ''); }
+  /** 'duty' -> Duty Board; 'duty~alfarah' -> Duty Board · Alfarah Asab */
+  function appName(id) {
+    var parts = String(id || '').split('~');
+    var a = apps.find(function (x) { return x.id === parts[0]; });
+    var name = a ? a.name : (parts[0] || '');
+    if (parts[1]) { var c = camps.find(function (x) { return x.id === parts[1]; }); name += ' · ' + (c ? c.name : parts[1]); }
+    return name;
+  }
+  function campName(id) { var c = camps.find(function (x) { return x.id === id; }); return c ? c.name : id; }
   function showSecret(user, pw, what) {
     var s = $('secret');
     s.innerHTML = '<b>' + esc(what) + ' for ' + esc(user) + ':</b> <code>' + esc(pw) + '</code>' +
@@ -168,7 +200,8 @@
   document.querySelectorAll('.tab').forEach(function (t) {
     t.addEventListener('click', function () {
       document.querySelectorAll('.tab').forEach(function (x) { x.setAttribute('aria-selected', String(x === t)); });
-      ['users', 'backups', 'activity'].forEach(function (k) { $('t-' + k).hidden = k !== t.dataset.t; });
+      ['users', 'camps', 'backups', 'activity'].forEach(function (k) { $('t-' + k).hidden = k !== t.dataset.t; });
+      if (t.dataset.t === 'camps') renderCamps();
       if (t.dataset.t === 'activity') loadAudit();
       if (t.dataset.t === 'backups') loadBackups();
     });
@@ -176,7 +209,7 @@
 
   // ---------- users ----------
   function renderUsers() {
-    $('userTbl').querySelector('thead').innerHTML = '<tr><th>User</th>' + apps.map(function (a) { return '<th>' + esc(a.name) + '</th>'; }).join('') +
+    $('userTbl').querySelector('thead').innerHTML = '<tr><th>User</th><th>Camps</th>' + apps.map(function (a) { return '<th>' + esc(a.name) + '</th>'; }).join('') +
       '<th>Portal admin</th><th>Status</th><th>Last sign-in</th><th></th></tr>';
     $('userTbl').querySelector('tbody').innerHTML = userList.map(function (u) {
       var self = u.username === me.username;
@@ -184,6 +217,7 @@
       if (u.mustChange && !u.disabled) status += ' <span class="chip c-warn">Temporary password</span>';
       return '<tr data-u="' + esc(u.username) + '">' +
         '<td class="wrap"><b>' + esc(u.name || u.username) + '</b><br><span class="note">' + esc(u.username) + (self ? ' (you)' : '') + '</span></td>' +
+        '<td class="wrap">' + campsCell(u) + '</td>' +
         apps.map(function (a) { return '<td>' + roleSelect(a.id, u.apps[a.id], u.isAdmin ? 'disabled title="Portal admins are Admin in every app"' : 'data-act="role"') + scopeCell(a, u) + '</td>'; }).join('') +
         '<td><input type="checkbox" data-act="admin"' + (u.isAdmin ? ' checked' : '') + (self ? ' disabled title="You cannot change your own admin rights"' : '') + '></td>' +
         '<td>' + status + '</td><td>' + when(u.lastLoginAt) + '</td>' +
@@ -192,13 +226,73 @@
           '<button class="btn btn-red btn-sm" data-act="del" title="Delete">🗑</button>') + '</td></tr>';
     }).join('');
   }
+  // ---------- camps ----------
+  function userCamps(u) { return (u.camps || []).filter(function (id) { return camps.some(function (c) { return c.id === id; }); }); }
+  function campsCell(u) {
+    if (u.isAdmin) return '<span class="scope">All camps</span>';
+    var ids = userCamps(u);
+    return '<button class="btn btn-ghost btn-sm" data-act="camps">🏕 Camps (' + ids.length + ')</button>' +
+      '<span class="scope">' + (ids.length ? esc(ids.map(campName).join(', ')) : '<b style="color:#b91c1c">None yet: sees nothing</b>') + '</span>';
+  }
+  function campChecks(chosen) {
+    return camps.map(function (c) {
+      return '<label class="ck"><input type="checkbox" value="' + esc(c.id) + '"' + (chosen.has(c.id) ? ' checked' : '') + '> ' + esc(c.name) + '</label>';
+    }).join('');
+  }
+  function chooseCamps(u) {
+    var bg = document.createElement('div'); bg.className = 'dlg-bg';
+    bg.innerHTML = '<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgC"><h3 id="dlgC">Camps for ' + esc(u.name || u.username) + '</h3>' +
+      '<p class="note">' + esc(u.username) + ' will only see the camps you tick, in every app they have a role in.</p>' +
+      campChecks(new Set(userCamps(u))) +
+      '<div class="btns"><button class="btn btn-ghost" type="button" data-x="cancel">Cancel</button><button class="btn btn-blue" type="button" data-x="save">Save</button></div></div>';
+    document.body.appendChild(bg);
+    var close = function () { bg.remove(); };
+    bg.addEventListener('click', function (e) {
+      if (e.target === bg || e.target.dataset.x === 'cancel') return close();
+      if (e.target.dataset.x !== 'save') return;
+      var ids = [].slice.call(bg.querySelectorAll('input:checked')).map(function (c) { return c.value; });
+      close();
+      update(u, { camps: ids }, 'Camps of ' + u.username + ' saved (' + (ids.map(campName).join(', ') || 'none') + ').');
+    });
+    var first = bg.querySelector('input'); if (first) first.focus();
+  }
+  function renderCamps() {
+    $('campTbl').querySelector('tbody').innerHTML = camps.map(function (c) {
+      var n = userList.filter(function (u) { return !u.isAdmin && (u.camps || []).indexOf(c.id) >= 0; }).length;
+      return '<tr><td><b>' + esc(c.name) + '</b></td><td><code>' + esc(c.id) + '</code></td><td>' + n + ' + portal admins</td></tr>';
+    }).join('');
+  }
+  function loadCamps() {
+    return api('GET', '/api/admin/camps').then(function (list) {
+      camps = list;
+      $('newCamps').innerHTML = campChecks(new Set());
+      var opts = camps.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('');
+      ['bkCamp', 'impCamp'].forEach(function (id) { var keep = $(id).value; $(id).innerHTML = opts; if (keep) $(id).value = keep; });
+      renderCamps();
+    });
+  }
+  $('campForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = $('campName').value.trim();
+    if (!name) return;
+    if (!confirm('Add the camp "' + name + '"?\n\nIt appears in every app. In Manpower, Daily Costing, Duty Board and Dining Halls it starts empty.')) return;
+    api('POST', '/api/admin/camps', { name: name }).then(function (c) {
+      $('campName').value = '';
+      msg('campMsg', 'Camp "' + c.name + '" added. Tick it for the people who should use it (Users tab).', true);
+      return loadCamps().then(loadDepts).then(renderUsers);
+    }).catch(function (err) { msg('campMsg', err.message); });
+  });
+
   // ---------- departments (Duty Board) ----------
   var SCOPED = { duty: true };
   var deptList = [];   // [{id, name}] of Duty Board
+  /** Departments of every camp's Duty Board ("Camp · Department" when there are several camps). */
   function loadDepts() {
-    return api('GET', '/api/apps/duty/data').then(function (d) {
-      deptList = ((d.doc && d.doc.depts) || []).map(function (x) { return { id: x.id, name: x.name }; });
-    }).catch(function () { deptList = []; });
+    return Promise.all(camps.map(function (c) {
+      return api('GET', '/api/apps/duty/data?camp=' + encodeURIComponent(c.id)).then(function (d) {
+        return ((d.doc && d.doc.depts) || []).map(function (x) { return { id: x.id, name: (camps.length > 1 ? c.name + ' · ' : '') + x.name }; });
+      }, function () { return []; });
+    })).then(function (lists) { deptList = [].concat.apply([], lists); });
   }
   function userDepts(u) { return ((u.scopes || {}).duty || {}).depts || []; }
   function scopeCell(a, u) {
@@ -269,6 +363,7 @@
     var b = e.target.closest('button[data-act]'); if (!b) return;
     var u = userOf(b);
     if (b.dataset.act === 'depts') { chooseDepts(u); return; }
+    if (b.dataset.act === 'camps') { chooseCamps(u); return; }
     if (b.dataset.act === 'reset' && confirm('Give ' + u.username + ' a new temporary password? Their current password stops working.')) update(u, { resetPassword: true }, 'Password of ' + u.username + ' reset.');
     if (b.dataset.act === 'toggle') update(u, { disabled: !u.disabled }, u.username + (u.disabled ? ' enabled.' : ' disabled.'));
     if (b.dataset.act === 'del' && confirm('Delete the account ' + u.username + '? This cannot be undone.\n\nTip: “Disable” blocks sign-in but keeps the account.')) {
@@ -281,9 +376,11 @@
     msg('addMsg', '');
     var roles = {};
     $('newRoles').querySelectorAll('select').forEach(function (s) { if (s.value) roles[s.dataset.app] = s.value; });
-    api('POST', '/api/admin/users', { username: $('nu').value.trim().toLowerCase(), name: $('nn').value.trim(), isAdmin: $('na').checked, apps: roles })
+    var campIds = [].slice.call($('newCamps').querySelectorAll('input:checked')).map(function (c) { return c.value; });
+    if (!$('na').checked && Object.keys(roles).length && !campIds.length) return msg('addMsg', 'Tick at least one camp: without a camp the person sees nothing.');
+    api('POST', '/api/admin/users', { username: $('nu').value.trim().toLowerCase(), name: $('nn').value.trim(), isAdmin: $('na').checked, apps: roles, camps: campIds })
       .then(function (r) {
-        showSecret(r.user.username, r.tempPassword, 'Temporary password'); $('addForm').reset();
+        showSecret(r.user.username, r.tempPassword, 'Temporary password'); $('addForm').reset(); $('newCamps').innerHTML = campChecks(new Set());
         return loadUsers().then(function () {
           var dutyRole = r.user.apps.duty;
           if (!r.user.isAdmin && (dutyRole === 'operator' || dutyRole === 'viewer')) chooseDepts(userList.find(function (x) { return x.username === r.user.username; }));
@@ -294,36 +391,47 @@
 
   // ---------- backups ----------
   var KIND = { daily: 'Start of day', 'pre-import': 'Before import', manual: 'Manual' };
+  function perCamp(appId) { var a = apps.find(function (x) { return x.id === appId; }); return !!(a && a.perCamp); }
+  /** '?camp=<id>' for apps with data per camp (shows / hides the camp choice next to the app). */
+  function campQ(appSel, campSel, field) {
+    var on = perCamp($(appSel).value);
+    $(field).hidden = !on;
+    return on ? '?camp=' + encodeURIComponent($(campSel).value) : '';
+  }
+  function backupTarget() { return appName($('bkApp').value + (perCamp($('bkApp').value) ? '~' + $('bkCamp').value : '')); }
+  function importTarget() { return appName($('impApp').value + (perCamp($('impApp').value) ? '~' + $('impCamp').value : '')); }
   function loadBackups() {
-    var appId = $('bkApp').value;
-    $('bkExport').href = '/api/admin/apps/' + encodeURIComponent(appId) + '/export';
-    return api('GET', '/api/admin/apps/' + encodeURIComponent(appId) + '/snapshots').then(function (list) {
+    var appId = $('bkApp').value, q = campQ('bkApp', 'bkCamp', 'bkCampF');
+    $('bkExport').href = '/api/admin/apps/' + encodeURIComponent(appId) + '/export' + q;
+    return api('GET', '/api/admin/apps/' + encodeURIComponent(appId) + '/snapshots' + q).then(function (list) {
       $('bkTbl').querySelector('tbody').innerHTML = list.map(function (b) {
         return '<tr><td>' + when(b.createdAt) + '</td><td>' + esc(KIND[b.kind] || b.kind) + '</td><td class="wrap">' + esc(b.label) + '</td><td>' + esc(b.createdBy) + '</td>' +
           '<td>' + b.rev + '</td><td>' + (b.sizeBytes / 1048576).toFixed(2) + ' MB</td>' +
-          '<td style="text-align:right"><a class="btn btn-ghost btn-sm" href="/api/admin/apps/' + encodeURIComponent(appId) + '/snapshots/' + b.id + '">⬇ Download</a></td></tr>';
+          '<td style="text-align:right"><a class="btn btn-ghost btn-sm" href="/api/admin/apps/' + encodeURIComponent(appId) + '/snapshots/' + b.id + q + '">⬇ Download</a></td></tr>';
       }).join('') || '<tr><td colspan="7">No backups yet. The first daily copy is made with the first change of the day.</td></tr>';
     }).catch(function (e) { msg('bkMsg', e.message); });
   }
   $('bkApp').addEventListener('change', loadBackups);
+  $('bkCamp').addEventListener('change', loadBackups);
+  $('impApp').addEventListener('change', function () { campQ('impApp', 'impCamp', 'impCampF'); });
   $('bkNow').addEventListener('click', function () {
-    var appId = $('bkApp').value;
-    api('POST', '/api/admin/apps/' + encodeURIComponent(appId) + '/snapshots', { label: 'Manual backup' })
-      .then(function () { msg('bkMsg', 'Backup of ' + appName(appId) + ' saved.', true); loadBackups(); })
+    var appId = $('bkApp').value, q = campQ('bkApp', 'bkCamp', 'bkCampF');
+    api('POST', '/api/admin/apps/' + encodeURIComponent(appId) + '/snapshots' + q, { label: 'Manual backup' })
+      .then(function () { msg('bkMsg', 'Backup of ' + backupTarget() + ' saved.', true); loadBackups(); })
       .catch(function (e) { msg('bkMsg', e.message); });
   });
   $('impBtn').addEventListener('click', function () {
-    var appId = $('impApp').value, f = $('impFile').files[0];
+    var appId = $('impApp').value, f = $('impFile').files[0], q = campQ('impApp', 'impCamp', 'impCampF'), target = importTarget();
     if (!f) return msg('impMsg', 'Choose the file first.');
     var reader = new FileReader();
     reader.onload = function () {
       var file;
       try { file = JSON.parse(reader.result); } catch (e) { return msg('impMsg', 'This file is not valid JSON.'); }
-      if (!confirm('Replace ALL data of ' + appName(appId) + ' with "' + f.name + '"?\n\nThe current data is backed up first. Everyone using ' + appName(appId) + ' will reload.')) return;
+      if (!confirm('Replace ALL data of ' + target + ' with "' + f.name + '"?\n\nThe current data is backed up first. Everyone using ' + target + ' will reload.')) return;
       msg('impMsg', 'Uploading…', true);
       $('impBtn').disabled = true;
-      api('POST', '/api/admin/apps/' + encodeURIComponent(appId) + '/import', { file: file, fileName: f.name })
-        .then(function (r) { msg('impMsg', '✓ Imported into ' + appName(appId) + ' (revision ' + r.rev + '). The previous data is in the backup list.', true); $('impFile').value = ''; })
+      api('POST', '/api/admin/apps/' + encodeURIComponent(appId) + '/import' + q, { file: file, fileName: f.name })
+        .then(function (r) { msg('impMsg', '✓ Imported into ' + target + ' (revision ' + r.rev + '). The previous data is in the backup list.', true); $('impFile').value = ''; })
         .catch(function (e) { msg('impMsg', e.message); })
         .then(function () { $('impBtn').disabled = false; });
     };
@@ -336,7 +444,7 @@
     'change-password': 'Changed own password', 'user-create': 'Created user', 'user-update': 'Changed user', 'user-delete': 'Deleted user',
     'change-denied': 'Change blocked', 'change-conflict': 'Change partly lost (same record changed by someone else)', 'import': 'Imported data',
     'export': 'Downloaded current data', 'backup-create': 'Made a backup', 'backup-download': 'Downloaded a backup',
-    'file-upload': 'Uploaded a file', 'reset-admin': 'Admin reset (server console)', 'create-first-admin': 'First admin created'
+    'file-upload': 'Uploaded a file', 'reset-admin': 'Admin reset (server console)', 'create-first-admin': 'First admin created', 'camp-add': 'Added a camp'
   };
   function details(d) {
     if (!d) return '';
@@ -363,7 +471,7 @@
     $('newRoles').innerHTML = apps.map(function (a) {
       return '<div class="field"><label>' + esc(a.name) + '</label>' + roleSelect(a.id, '') + '</div>';
     }).join('');
-    return loadDepts().then(loadUsers);
+    return loadCamps().then(function () { campQ('bkApp', 'bkCamp', 'bkCampF'); campQ('impApp', 'impCamp', 'impCampF'); return loadDepts(); }).then(loadUsers);
   }).catch(function (e) { if (e && e.status !== 401) msg('userMsg', e.message); });
 })();
 </script>

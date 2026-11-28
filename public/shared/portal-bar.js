@@ -9,12 +9,14 @@
  *   GESPortal.notice(id, text, {kind, action: {label, run}})   GESPortal.clearNotice(id)
  *   GESPortal.toast(text)                GESPortal.cover(html|null)
  *   GESPortal.api(method, url, body)     fetch helper (signs in again on 401)
+ *   GESPortal.chooseCamp(appId, me, perCamp) -> Promise<camp|null>   the camp this page works on
+ *   GESPortal.withCamp(url)              adds ?camp=<id> for apps with data per camp
  */
 (function () {
   'use strict';
   var ROLE_LABEL = { admin: 'Admin', operator: 'Operator', viewer: 'Viewer' };
   var VIEW_ONLY_TEXT = 'View only - changes you make on this page are not saved.';
-  var state = { appId: null, me: null, apps: [], live: false, online: [], viewOnly: false };
+  var state = { appId: null, me: null, apps: [], live: false, online: [], viewOnly: false, camp: null };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -93,7 +95,7 @@
     if (!pill) return;
     var app = currentApp();
     pill.innerHTML = '<span class="gesp-dotapp" style="background:' + esc(app ? app.color : '#64748b') + '"></span>' +
-      '<span class="gesp-app">' + esc(app ? app.name : 'GES Portal') + '</span>' +
+      '<span class="gesp-app">' + esc(app ? app.name : 'GES Portal') + (state.camp ? ' · ' + esc(state.camp.name) : '') + '</span>' +
       (state.viewOnly ? '<span class="gesp-view">👁 View only</span>' : '') +
       '<span class="gesp-live' + (state.live ? ' on' : '') + '"><span class="gesp-dot"></span><span class="gesp-txt">' +
       (state.live ? 'Live · ' + state.online.length : 'Offline') + '</span></span>';
@@ -114,6 +116,12 @@
         '<span class="gesp-dotapp" style="background:' + esc(a.color) + '"></span>' + esc(a.name) +
         '<span class="gesp-role">' + ROLE_LABEL[me.apps[a.id]] + '</span></a>';
     });
+    var camps = (me.camps || []);
+    if (state.camp && camps.length > 1) {
+      h += '<div class="gesp-sec">Camp</div>' + camps.map(function (c) {
+        return '<a class="gesp-item' + (c.id === state.camp.id ? ' cur' : '') + '" href="' + esc(location.pathname) + '?camp=' + encodeURIComponent(c.id) + '">🏕 ' + esc(c.name) + '</a>';
+      }).join('');
+    }
     h += '<div class="gesp-sec">Account</div>';
     if (me.isAdmin) h += '<a class="gesp-item" href="/admin">⚙ Users, backups &amp; activity</a>';
     h += '<a class="gesp-item" href="/login?change=1&amp;self=1">🔑 Change my password</a>' +
@@ -199,6 +207,48 @@
     c.innerHTML = '<div>' + html + '</div>';
   }
 
+  // ------------------------------------------------------------------ camps
+  function readLocal(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function writeLocal(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage blocked */ } }
+
+  /**
+   * The camp this page works on, for an app with a separate set of data per camp:
+   * ?camp=<id> in the address, else the camp used last time, else the only camp - else the person
+   * picks one. Resolves null for apps that hold every camp in one set of data (Camp Management).
+   * Never resolves while a message or the camp list is shown instead of the app.
+   */
+  function chooseCamp(appId, me, perCamp) {
+    if (!perCamp) return Promise.resolve(null);
+    var list = (me && me.camps) || [];
+    if (!list.length) {
+      cover('No camp has been given to you yet.<br>Ask a portal admin to tick your camp on the Users page.<br><a href="/">Back to all apps</a>');
+      return new Promise(function () { });
+    }
+    var byId = function (id) { return list.find(function (c) { return c.id === id; }) || null; };
+    var asked = new URLSearchParams(location.search).get('camp');
+    var camp = byId(asked) || (asked ? null : byId(readLocal('ges.camp.' + appId))) || (list.length === 1 ? list[0] : null);
+    if (!camp) {
+      cover((asked ? 'You do not have access to that camp.<br><br>' : '') + '<b>Choose the camp</b><br>' + list.map(function (c) {
+        return '<a href="' + esc(location.pathname) + '?camp=' + encodeURIComponent(c.id) + '">🏕 ' + esc(c.name) + '</a>';
+      }).join(' ') + '<br><a href="/" style="background:#64748b">Back to all apps</a>');
+      return new Promise(function () { });
+    }
+    state.camp = camp;
+    writeLocal('ges.camp.' + appId, camp.id);
+    if (asked !== camp.id) {
+      var q = new URLSearchParams(location.search); q.set('camp', camp.id);
+      try { history.replaceState(null, '', location.pathname + '?' + q.toString() + location.hash); } catch (e) { /* not allowed */ }
+    }
+    renderPill();
+    return Promise.resolve(camp);
+  }
+
+  /** Adds ?camp=<id> (the page's camp) to an API address. */
+  function withCamp(url) {
+    if (!state.camp) return url;
+    return url + (url.indexOf('?') < 0 ? '?' : '&') + 'camp=' + encodeURIComponent(state.camp.id);
+  }
+
   function displayName(username) {
     var o = state.online.find(function (u) { return u.username === username; });
     return (o && o.name) || username;
@@ -207,6 +257,7 @@
   window.GESPortal = {
     mount: mount, setLive: setLive, setOnline: setOnline, setViewOnly: setViewOnly, notice: notice, clearNotice: clearNotice,
     toast: toast, cover: cover, api: api, esc: esc, displayName: displayName, onBeforeLeave: onBeforeLeave,
-    goLogin: goLogin, ROLE_LABEL: ROLE_LABEL
+    goLogin: goLogin, ROLE_LABEL: ROLE_LABEL, chooseCamp: chooseCamp, withCamp: withCamp,
+    camp: function () { return state.camp; }
   };
 })();

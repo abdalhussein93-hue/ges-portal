@@ -5,6 +5,7 @@
 const { hashPassword, passwordProblem, temporaryPassword } = require('./passwords');
 const { isRole } = require('../domain/roles');
 const { UserError } = require('../domain/apps/common');
+const { PRIMARY } = require('../domain/camps');
 
 const USERNAME = /^[a-z0-9._-]{3,32}$/;
 
@@ -17,13 +18,19 @@ function sameRoles(a, b) {
 /** What the browser may see about a user (never the password hash). */
 function publicUser(u, online = false) {
   return {
-    username: u.username, name: u.name, isAdmin: u.isAdmin, apps: u.apps, scopes: u.scopes || {},
+    username: u.username, name: u.name, isAdmin: u.isAdmin, apps: u.apps, scopes: u.scopes || {}, camps: u.camps || [],
     disabled: u.disabled, mustChange: u.mustChange,
     createdAt: u.createdAt, lastLoginAt: u.lastLoginAt, online,
   };
 }
 
 const SCOPE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const CAMP_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+/** Valid camp ids, once each. (Unknown ids are harmless: access is always checked against the portal's camps.) */
+function cleanCamps(input) {
+  return Array.isArray(input) ? [...new Set(input.filter(c => typeof c === 'string' && CAMP_ID.test(c)))].slice(0, 100) : [];
+}
 
 class UserAdminService {
   /**
@@ -63,7 +70,7 @@ class UserAdminService {
   }
 
   /** @returns {Promise<{user: object, tempPassword: string}>} */
-  async create(actor, { username, name, isAdmin, apps, scopes }) {
+  async create(actor, { username, name, isAdmin, apps, scopes, camps }) {
     username = String(username || '').trim().toLowerCase();
     if (!USERNAME.test(username)) throw new UserError('Username: 3-32 characters - lowercase letters, numbers, dot, dash or underscore.');
     if (await this.users.find(username)) throw new UserError('That username already exists.');
@@ -72,9 +79,10 @@ class UserAdminService {
       username, name: String(name || '').trim().slice(0, 80), isAdmin: !!isAdmin,
       apps: isAdmin ? this.allAppsAdmin() : this.cleanAppRoles(apps),
       scopes: this.cleanScopes(scopes),
+      camps: camps === undefined ? [PRIMARY] : cleanCamps(camps), // not given: the first camp
       passwordHash: await hashPassword(tempPassword), mustChange: true,
     });
-    await this.audit.record({ username: actor.username, action: 'user-create', details: { target: username, isAdmin: !!isAdmin, apps: user.apps, scopes: user.scopes } });
+    await this.audit.record({ username: actor.username, action: 'user-create', details: { target: username, isAdmin: !!isAdmin, apps: user.apps, scopes: user.scopes, camps: user.camps } });
     return { user: publicUser(user), tempPassword };
   }
 
@@ -109,6 +117,11 @@ class UserAdminService {
     if (changes.scopes !== undefined) {
       const scopes = this.cleanScopes(changes.scopes);
       if (JSON.stringify(scopes) !== JSON.stringify(this.cleanScopes(target.scopes))) { fields.scopes = scopes; signOut = signOut || !self; }
+    }
+    if (changes.camps !== undefined) {
+      const camps = cleanCamps(changes.camps);
+      const before = cleanCamps(target.camps);
+      if (camps.length !== before.length || camps.some(c => !before.includes(c))) { fields.camps = camps; signOut = signOut || !self; }
     }
     if (changes.disabled !== undefined && !!changes.disabled !== target.disabled) {
       if (self) throw new UserError('You cannot disable your own account.');

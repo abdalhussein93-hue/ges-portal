@@ -26,6 +26,7 @@ function importDocument(file) {
 
 module.exports = defineApp({
   id: 'manpower',
+  perCamp: true, // a separate set of data per camp (see domain/camps.js)
   name: 'GES Manpower',
   description: 'Staff list, transfers and resignations, vacation plan, monthly timesheet and salary.',
   icon: 'ti-users-group',

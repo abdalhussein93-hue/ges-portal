@@ -9,8 +9,12 @@
  *  - Before the first change of each day a full copy is stored in app_snapshots ('daily').
  *  - Before an import replaces everything, a full copy is stored ('pre-import').
  *  - Changes to one app are applied one at a time (no lost updates between two saves).
+ *
+ * Data is kept per 'key': the app id ('manpower') or, for another camp's data, 'manpower~<camp id>'
+ * (see domain/camps.js). Every method that takes an appId takes such a key.
  */
 const Patch = require('../domain/patch');
+const Camps = require('../domain/camps');
 const { UserError } = require('../domain/apps/common');
 
 const MAX_CATCH_UP = 2000; // more missed changes than this: the browser reloads everything
@@ -65,6 +69,16 @@ class DocumentService {
     return { rev: st.rev, doc: st.doc };
   }
 
+  /** Is this data (app or app~camp) loaded? */
+  has(key) { return this.state.has(key); }
+
+  /** The app definition that a key belongs to. */
+  appFor(key) {
+    const app = this.apps.get(Camps.parseKey(key).appId);
+    if (!app) throw new Error(`Unknown app: ${key}`);
+    return app;
+  }
+
   mustState(appId) {
     const st = this.state.get(appId);
     if (!st) throw new Error(`Unknown app: ${appId}`);
@@ -86,7 +100,7 @@ class DocumentService {
    *   missed: changes by others between baseRev and this one (null = too many, browser must reload)
    */
   applyChange(appId, username, baseRev, ops) {
-    const app = this.apps.get(appId);
+    const app = this.appFor(appId);
     return this.exclusive(appId, async () => {
       const st = this.mustState(appId);
       const now = new Date();
@@ -186,7 +200,7 @@ class DocumentService {
   /** Daily housekeeping: remove daily snapshots older than the retention period. */
   async pruneSnapshots() {
     let removed = 0;
-    for (const app of this.apps.list()) removed += await this.repo.pruneDailySnapshots(app.id, this.snapshotDays);
+    for (const key of this.state.keys()) removed += await this.repo.pruneDailySnapshots(key, this.snapshotDays);
     return removed;
   }
 }

@@ -3,17 +3,21 @@
 const { UserError } = require('../domain/apps/common');
 const { atLeast } = require('../domain/roles');
 const { APP_ID } = require('../services/dining');
+const { campFor } = require('./apps');
 
 const SMALL_BODY = 4 * 1024;
 
-/** The user's role in Dining Halls; refuses if it is below `minRole`. */
-function role(ctx, minRole) {
+/**
+ * The user's role in Dining Halls and the camp (?camp=<id>) the request is for; refuses if the role
+ * is below `minRole` or the person may not use that camp.
+ */
+function access(ctx, apps, minRole) {
   const r = ctx.user.apps[APP_ID];
   if (!r) throw new UserError('You do not have access to Dining Halls.', 403);
   if (!atLeast(r, minRole)) {
     throw new UserError(minRole === 'admin' ? 'Only an Admin of Dining Halls can do this.' : 'Your account can only view Dining Halls.', 403);
   }
-  return r;
+  return { role: r, campId: campFor(ctx, apps.get(APP_ID)).campId };
 }
 
 /**
@@ -34,62 +38,68 @@ async function stream(ctx, type, fileName, produce) {
   res.end();
 }
 
-function register(router, { dining, audit, config }) {
+function register(router, { dining, audit, config, apps, camps }) {
+  const role = (ctx, minRole) => access(ctx, apps, minRole);
+  const key = campId => dining.key(campId);
+  const campLabel = campId => { const c = camps && camps.get(campId); return c ? c.name : campId; };
+  const fileCamp = campId => campId.replace(/[^a-z0-9-]/g, '');
+
   // a guard (Operator) or Admin scans a card
   router.post('/api/dining/scan', async ctx => {
-    const r = role(ctx, 'operator');
+    const a = role(ctx, 'operator');
     const body = await ctx.body(SMALL_BODY);
-    ctx.json(200, await dining.scan(ctx.user, r, body));
+    ctx.json(200, await dining.scan(a.campId, ctx.user, a.role, body));
   });
 
   router.get('/api/dining/today', async ctx => {
-    role(ctx, 'viewer');
-    ctx.json(200, await dining.today());
+    const a = role(ctx, 'viewer');
+    ctx.json(200, await dining.today(a.campId));
   });
 
   router.get('/api/dining/scans', async ctx => {
-    role(ctx, 'viewer');
-    ctx.json(200, await dining.list(ctx.url.searchParams));
+    const a = role(ctx, 'viewer');
+    ctx.json(200, await dining.list(a.campId, ctx.url.searchParams));
   });
 
   router.get('/api/dining/report', async ctx => {
-    role(ctx, 'viewer');
-    ctx.json(200, await dining.report(ctx.url.searchParams));
+    const a = role(ctx, 'viewer');
+    ctx.json(200, await dining.report(a.campId, ctx.url.searchParams));
   });
 
   router.get('/api/dining/scans.csv', async ctx => {
-    role(ctx, 'viewer');
+    const a = role(ctx, 'viewer');
     const q = ctx.url.searchParams;
     dining.filter(q, true); // check the range before the download starts
-    await audit.record({ username: ctx.user.username, appId: APP_ID, action: 'dining-export', details: { from: q.get('from'), to: q.get('to') }, ip: ctx.ip });
-    await stream(ctx, 'text/csv; charset=utf-8', `dining_scans_${q.get('from')}_to_${q.get('to')}.csv`, write => dining.exportCsv(q, write));
+    await audit.record({ username: ctx.user.username, appId: key(a.campId), action: 'dining-export', details: { from: q.get('from'), to: q.get('to') }, ip: ctx.ip });
+    await stream(ctx, 'text/csv; charset=utf-8', `dining_scans_${fileCamp(a.campId)}_${q.get('from')}_to_${q.get('to')}.csv`, write => dining.exportCsv(a.campId, q, write));
   });
 
   // Admin: download a backup file (people, cards, companies, settings + scan records)
   router.get('/api/dining/backup', async ctx => {
-    role(ctx, 'admin');
+    const a = role(ctx, 'admin');
     const q = ctx.url.searchParams;
     if (q.get('from') || q.get('to')) dining.filter(q, true); // check the range before the download starts
-    dining.setup();
-    await audit.record({ username: ctx.user.username, appId: APP_ID, action: 'dining-backup', details: { from: q.get('from') || 'all', to: q.get('to') || 'all' }, ip: ctx.ip });
+    dining.setup(a.campId);
+    await audit.record({ username: ctx.user.username, appId: key(a.campId), action: 'dining-backup', details: { from: q.get('from') || 'all', to: q.get('to') || 'all' }, ip: ctx.ip });
     const stamp = new Date().toISOString().slice(0, 10);
-    const name = q.get('from') ? `dining_backup_${q.get('from')}_to_${q.get('to')}.json` : `dining_backup_all_${stamp}.json`;
-    await stream(ctx, 'application/json; charset=utf-8', name, write => dining.backup(q, write));
+    const camp = fileCamp(a.campId);
+    const name = q.get('from') ? `dining_backup_${camp}_${q.get('from')}_to_${q.get('to')}.json` : `dining_backup_${camp}_all_${stamp}.json`;
+    await stream(ctx, 'application/json; charset=utf-8', name, write => dining.backup(a.campId, campLabel(a.campId), q, write));
   });
 
   // Admin: let people in again today
   router.post('/api/dining/release', async ctx => {
-    role(ctx, 'admin');
+    const a = role(ctx, 'admin');
     const body = await ctx.body(SMALL_BODY);
-    ctx.json(200, await dining.release(ctx.user, body.hall || null, ctx.ip));
+    ctx.json(200, await dining.release(a.campId, ctx.user, body.hall || null, ctx.ip));
   });
 
-  // Admin: bring in backup files of the old offline app
+  // Admin: bring in backup files (the old Mess Hall app's, or this app's)
   router.post('/api/dining/import', async ctx => {
-    role(ctx, 'admin');
+    const a = role(ctx, 'admin');
     const body = await ctx.body(config.maxUploadBytes);
     const setupFrom = body.setupFrom === null || body.setupFrom === undefined ? -1 : Number(body.setupFrom);
-    ctx.json(200, await dining.importBackups(ctx.user, body.files, setupFrom, ctx.ip));
+    ctx.json(200, await dining.importBackups(a.campId, ctx.user, body.files, setupFrom, ctx.ip));
   });
 }
 

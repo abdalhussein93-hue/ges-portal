@@ -1,9 +1,9 @@
 'use strict';
 /** users table */
 
-const COLUMNS = `username, display_name, is_admin, app_roles, app_scopes, password_hash, must_change_password,
+const COLUMNS = `username, display_name, is_admin, app_roles, app_scopes, camps, password_hash, must_change_password,
   disabled, created_at, last_login_at, password_changed_at`;
-const JSON_FIELDS = new Set(['apps', 'scopes']);
+const JSON_FIELDS = new Set(['apps', 'scopes', 'camps']);
 
 function toUser(row) {
   if (!row) return null;
@@ -13,6 +13,7 @@ function toUser(row) {
     isAdmin: row.is_admin,
     apps: row.app_roles || {},
     scopes: row.app_scopes || {},
+    camps: Array.isArray(row.camps) ? row.camps : [], // ids of the camps this person may use (portal admins: all)
     passwordHash: row.password_hash,
     mustChange: row.must_change_password,
     disabled: row.disabled,
@@ -45,17 +46,17 @@ class UsersRepository {
     return rows[0].n;
   }
 
-  async create({ username, name, isAdmin, apps, scopes, passwordHash, mustChange }) {
+  async create({ username, name, isAdmin, apps, scopes, camps, passwordHash, mustChange }) {
     const { rows } = await this.db.query(
-      `INSERT INTO users (username, display_name, is_admin, app_roles, app_scopes, password_hash, must_change_password, password_changed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, now()) RETURNING ${COLUMNS}`,
-      [username, name || '', !!isAdmin, JSON.stringify(apps || {}), JSON.stringify(scopes || {}), passwordHash, mustChange !== false]);
+      `INSERT INTO users (username, display_name, is_admin, app_roles, app_scopes, camps, password_hash, must_change_password, password_changed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now()) RETURNING ${COLUMNS}`,
+      [username, name || '', !!isAdmin, JSON.stringify(apps || {}), JSON.stringify(scopes || {}), JSON.stringify(camps || []), passwordHash, mustChange !== false]);
     return toUser(rows[0]);
   }
 
   /** Updates only the given fields. */
   async update(username, fields) {
-    const map = { name: 'display_name', isAdmin: 'is_admin', apps: 'app_roles', scopes: 'app_scopes', disabled: 'disabled', mustChange: 'must_change_password' };
+    const map = { name: 'display_name', isAdmin: 'is_admin', apps: 'app_roles', scopes: 'app_scopes', camps: 'camps', disabled: 'disabled', mustChange: 'must_change_password' };
     const sets = [];
     const values = [];
     for (const [key, column] of Object.entries(map)) {

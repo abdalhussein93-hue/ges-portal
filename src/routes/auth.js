@@ -21,7 +21,8 @@ function register(router, { auth, config }) {
 
   router.get('/api/me', { allowMustChange: true }, async ctx => {
     const u = ctx.user;
-    ctx.json(200, { username: u.username, name: u.name, isAdmin: u.isAdmin, apps: u.apps, mustChange: u.mustChange });
+    const camps = u.campAccess || { all: false, list: [] };
+    ctx.json(200, { username: u.username, name: u.name, isAdmin: u.isAdmin, apps: u.apps, mustChange: u.mustChange, camps: camps.list, allCamps: camps.all });
   });
 
   router.post('/api/me/password', { allowMustChange: true }, async ctx => {

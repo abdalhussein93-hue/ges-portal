@@ -110,6 +110,7 @@ async function start(config = loadConfig(), { log = console.log, onListening = (
       ' Set EMERGENCY_ADMIN=off once you can sign in.');
   }
   await c.documents.init();
+  await c.camps.init();
   handler = createApp(c);
   log('[start] ready.');
 

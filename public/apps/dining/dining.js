@@ -48,6 +48,8 @@
   function companies() { return (D && Array.isArray(D.companies)) ? D.companies : []; }
   function norm(code) { return String(code == null ? '' : code).replace(/\s+/g, '').toUpperCase(); }
   function poolCode(n) { return 'MH' + String(n).padStart(5, '0'); }
+  /** Dining Halls API, for this page's camp. */
+  function api(method, path, body) { return Portal.api(method, Portal.withCamp(path), body); }
   function debounce(fn, ms) { var t; return function () { clearTimeout(t); t = setTimeout(fn, ms); }; }
 
   var fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -129,7 +131,9 @@
 
   function start() {
     $('app').hidden = false;
-    $('who').textContent = (me.name || me.username) + ' · ' + Portal.ROLE_LABEL[role];
+    var camp = Portal.camp();
+    $('who').textContent = (camp ? camp.name + ' · ' : '') + (me.name || me.username) + ' · ' + Portal.ROLE_LABEL[role];
+    $('bk-all').href = Portal.withCamp('/api/dining/backup');
     document.querySelectorAll('.admin-only').forEach(function (el) { if (!isAdmin()) el.hidden = true; });
     document.querySelectorAll('.admin-op').forEach(function (el) { if (!canScan()) el.hidden = true; });
     if (!HALLS.some(function (h) { return h.id === S.hall; })) S.hall = 'Senior';
@@ -241,7 +245,7 @@
     if (S.busy) return;
     S.busy = true; setScanEnabled(false);
     ctx(); // phones only allow sound after a touch: open it now
-    Portal.api('POST', '/api/dining/scan', { hall: S.hall, barcode: code, decision: decision, method: method === 'nfc' ? 'nfc' : 'code' })
+    api('POST', '/api/dining/scan', { hall: S.hall, barcode: code, decision: decision, method: method === 'nfc' ? 'nfc' : 'code' })
       .then(function (r) { setOnline(true); showResult(r); })
       .catch(function (e) {
         if (!e || !e.status || e.status >= 502) { setOnline(false); showProblem('NOT CHECKED', 'No connection to the server. Scan this card again when the connection is back.'); }
@@ -319,7 +323,7 @@
   }
 
   function refreshToday() {
-    return Portal.api('GET', '/api/dining/today').then(function (t) {
+    return api('GET', '/api/dining/today').then(function (t) {
       setOnline(true);
       S.counts = t.counts;
       $('meal-now').textContent = t.entryRule === 'day' ? 'One entry per day' : t.meal;
@@ -336,7 +340,7 @@
   function refreshRecent() {
     if (S.panel !== 'scan') return;
     var d = today();
-    Portal.api('GET', '/api/dining/scans?from=' + d + '&to=' + d + '&hall=' + encodeURIComponent(S.hall) + '&limit=8').then(function (r) {
+    api('GET', '/api/dining/scans?from=' + d + '&to=' + d + '&hall=' + encodeURIComponent(S.hall) + '&limit=8').then(function (r) {
       $('recent').innerHTML = r.rows.length ? r.rows.map(recordHtml).join('') : '<div class="empty">No scans at this hall yet today</div>';
     }, function () { });
   }
@@ -521,11 +525,11 @@
 
   function loadRecords(reset) {
     var q = recordQuery();
-    $('rec-csv').href = '/api/dining/scans.csv?' + q.toString();
+    $('rec-csv').href = Portal.withCamp('/api/dining/scans.csv?' + q.toString());
     if (reset) S.recBefore = null;
     if (S.recBefore) q.set('beforeId', S.recBefore);
     q.set('limit', LIST_PAGE);
-    Portal.api('GET', '/api/dining/scans?' + q.toString()).then(function (r) {
+    api('GET', '/api/dining/scans?' + q.toString()).then(function (r) {
       var html = r.rows.map(recordHtml).join('');
       if (reset) $('rec-list').innerHTML = html || '<div class="empty">No scans for these choices</div>';
       else $('rec-list').insertAdjacentHTML('beforeend', html);
@@ -554,7 +558,7 @@
     var from = $('rep-from').value, to = $('rep-to').value;
     if (!from || !to) return;
     if (from > to) { var t = from; from = to; to = t; }
-    Portal.api('GET', '/api/dining/report?from=' + from + '&to=' + to).then(function (r) { report = r; renderReport(); }, function (e) { toast(e.message); });
+    api('GET', '/api/dining/report?from=' + from + '&to=' + to).then(function (r) { report = r; renderReport(); }, function (e) { toast(e.message); });
   }
 
   function mealRank(m) { var i = MEALS.indexOf(m); return i < 0 ? 9 : i; }
@@ -869,13 +873,13 @@
     var from = $('bk-from').value, to = $('bk-to').value;
     if (!from || !to) { toast('Choose both dates'); return; }
     if (from > to) { var t = from; from = to; to = t; }
-    location.href = '/api/dining/backup?from=' + from + '&to=' + to;
+    location.href = Portal.withCamp('/api/dining/backup?from=' + from + '&to=' + to);
   };
 
   $('rel-btn').onclick = function () {
     var hall = $('rel-hall').value;
     if (!confirm('Let everybody who already entered ' + (hall ? hallOf(hall).label : 'any dining hall') + ' today in once more?\n\nToday\'s meals stay counted.')) return;
-    Portal.api('POST', '/api/dining/release', { hall: hall || null }).then(function (r) {
+    api('POST', '/api/dining/release', { hall: hall || null }).then(function (r) {
       toast(r.released + ' people can scan in again');
     }, function (e) { alert(e.message); });
   };
@@ -914,7 +918,7 @@
       (setupFrom >= 0 ? '\n\nThe people, cards and companies will be REPLACED by the ones in "' + S.importFiles[setupFrom].name + '" (the current ones are kept as a backup on the server).' : ''))) return;
     $('imp-btn').disabled = true;
     $('imp-result').textContent = 'Working…';
-    Portal.api('POST', '/api/dining/import', { files: S.importFiles.map(function (x) { return { name: x.name, content: x.content }; }), setupFrom: setupFrom })
+    api('POST', '/api/dining/import', { files: S.importFiles.map(function (x) { return { name: x.name, content: x.content }; }), setupFrom: setupFrom })
       .then(function (r) {
         var msg = '✅ ' + r.added + ' scan records added' + (r.skipped ? ', ' + r.skipped + ' already there (skipped)' : '') + '.' +
           (r.people !== null ? '\n' + r.people + ' people and their cards were brought in.' : '');

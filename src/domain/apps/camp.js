@@ -10,6 +10,7 @@
  */
 const { defineApp, UserError } = require('./common');
 const { describePath } = require('../operations');
+const Scope = require('../camp-scope');
 
 const ROOT_KEYS = Object.freeze(['campData', 'companies', 'historyLog', 'nationalities', 'BLOCKS_META', 'foodCategories',
   'campList', 'appSeeds', 'approvals', 'approvalCfg', 'deletedLog']);
@@ -54,13 +55,50 @@ function operatorApprovalRule(op, ctx, deny) {
   return deny('approve or reject requests');
 }
 
+/** The person's camps, as a Set of camp names; null = all camps (portal admin, or no camp info). */
+function allowedCamps(user) {
+  const a = user && user.campAccess;
+  return a && !a.all ? new Set(a.names) : null;
+}
+
+/**
+ * The camp list is the portal's: the app may only add a camp that the portal already has
+ * (a new, empty set of data adds them all) - never rename or remove one.
+ */
+function campListRule(op, ctx) {
+  const portal = Array.isArray(ctx.campNames) ? new Set(ctx.campNames) : null;
+  const current = ctx.doc && Array.isArray(ctx.doc.campList) ? ctx.doc.campList : [];
+  const known = v => !portal || portal.has(v);
+  if (op.p.length === 1 && op.o === 'pi' && known(op.v)) return null;
+  if (op.p.length === 1 && op.o === 's' && Array.isArray(op.v) && op.v.every(known) && current.every(n => op.v.includes(n))) return null;
+  return 'Camps are added, renamed and removed on the portal\'s Users page by a portal admin.';
+}
+
+/**
+ * 1. the camp list is the portal's; 2. a person limited to some camps changes only those camps;
+ * 3. the role rules below.
+ * @param {{doc?: object, user?: object, ops?: object[], campNames?: string[]}} [ctx]
+ *   current data, the signed-in user (user.campAccess), every op of this save, the portal's camp names
+ */
+function checkPermission(role, op, ctx = {}) {
+  if (op.p[0] === 'campList') {
+    const why = campListRule(op, ctx);
+    if (why || role !== 'admin') return why || 'Only an Admin can add camps.';
+  }
+  const allowed = allowedCamps(ctx.user);
+  if (allowed) {
+    const why = Scope.checkOp(op, allowed, ctx.doc, ctx.ops);
+    if (why) return why;
+  }
+  return roleRule(role, op, ctx);
+}
+
 /**
  * Operators: check in/out, reservations, resident details, room sizes, bathrooms, housekeeping.
  * While approval is on, bed changes go through approval requests instead.
  * Everything that changes the camp's structure, lists, money or deletes records needs an admin.
- * @param {{doc?: object, user?: object}} [ctx]  current data and the signed-in user
  */
-function checkPermission(role, op, ctx = {}) {
+function roleRule(role, op, ctx) {
   if (role === 'admin') return null;
   if (role !== 'operator') return 'Your account can only view this app.';
   const p = op.p;
@@ -134,14 +172,26 @@ function orderRooms(campData) {
 }
 
 /** Rooms in room-number order; Location Profit (revenue, costs) is for admins only. */
-function filterDoc(doc, role) {
-  if (!doc || !doc.campData || typeof doc.campData !== 'object') return doc;
+function filterDoc(doc, role, user) {
+  if (!doc) return doc;
+  // every portal camp the person has is in the camp switcher, even if the app's own list misses it
+  const access = user && user.campAccess;
+  if (access && Array.isArray(doc.campList)) {
+    const missing = access.names.filter(n => !doc.campList.includes(n));
+    if (missing.length) doc = Object.assign({}, doc, { campList: doc.campList.concat(missing) });
+  }
+  const allowed = allowedCamps(user);
+  if (allowed) doc = Scope.filterDoc(doc, allowed);
+  if (!doc.campData || typeof doc.campData !== 'object') return doc;
   const campData = orderRooms(doc.campData);
   if (role !== 'admin') delete campData[PROFIT];
   return Object.assign({}, doc, { campData });
 }
 
-function filterOps(ops, role) {
+/** @param {object} [doc] the data after these changes (to know which camp a block belongs to) */
+function filterOps(ops, role, user, doc) {
+  const allowed = allowedCamps(user);
+  if (allowed) ops = Scope.filterOps(ops, allowed, doc || {});
   if (role === 'admin') return ops;
   const out = [];
   for (const op of ops) {

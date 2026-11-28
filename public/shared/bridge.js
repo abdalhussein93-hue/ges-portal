@@ -12,7 +12,7 @@
  *   // without getLive/applyLive the app runs in RELOAD mode: when others change data the page
  *   // reloads as soon as the user pauses (Manpower - its screens keep their own copies of the data).
  *
- *   engine.ready  -> Promise {me, role, doc, seed}
+ *   engine.ready  -> Promise {me, role, doc, seed, camp}   camp: {id, name} for apps with data per camp
  *   engine.save(docOrNull)   queue a save (docOrNull: the app's full data now; LIVE mode reads getLive())
  *   engine.flush()           Promise resolved when nothing is waiting to be saved
  *
@@ -41,12 +41,20 @@
     var resolveReady, rejectReady;
     engine.ready = new Promise(function (res, rej) { resolveReady = res; rejectReady = rej; });
 
+    var url = function (path) { return Portal.withCamp('/api/apps/' + appId + path); };
+
     function boot() {
       Portal.api('GET', '/api/me').then(function (me) {
         s.me = me;
         s.role = me.apps[appId] || null;
         if (!s.role) { location.href = '/?denied=' + encodeURIComponent(appId); throw null; }
-        return Portal.api('GET', '/api/apps/' + appId + '/data');
+        return Portal.api('GET', '/api/apps');
+      }).then(function (apps) {
+        var info = (apps || []).find(function (a) { return a.id === appId; });
+        return Portal.chooseCamp(appId, s.me, !!(info && info.perCamp));
+      }).then(function (camp) {
+        s.camp = camp;
+        return Portal.api('GET', url('/data'));
       }).then(function (d) {
         s.rev = d.rev;
         if (d.doc) { s.known = P.clone(d.doc); return { doc: d.doc, seed: null }; }
@@ -55,9 +63,9 @@
           throw null;
         }
         s.known = {};
-        return Portal.api('GET', '/api/apps/' + appId + '/seed').then(function (seed) { return { doc: null, seed: seed }; }, function () { return { doc: null, seed: null }; });
+        return Portal.api('GET', url('/seed')).then(function (seed) { return { doc: null, seed: seed }; }, function () { return { doc: null, seed: null }; });
       }).then(function (r) {
-        resolveReady({ me: s.me, role: s.role, doc: r.doc, seed: r.seed });
+        resolveReady({ me: s.me, role: s.role, doc: r.doc, seed: r.seed, camp: s.camp });
       }).catch(function (e) {
         if (e === null) return;
         if (e && e.status === 401) return;
@@ -107,7 +115,7 @@
       s.pendingDoc = null;
       var ops = doc ? P.diff(s.known, doc) : [];
       if (!ops.length) { done(); return; }
-      Portal.api('POST', '/api/apps/' + appId + '/patch', { baseRev: s.rev, ops: ops, clientId: s.clientId }, { keepalive: s.keepalive })
+      Portal.api('POST', url('/patch'), { baseRev: s.rev, ops: ops, clientId: s.clientId }, { keepalive: s.keepalive })
         .then(function (r) {
           setConnected(true);
           if (r.reload) {
@@ -164,7 +172,7 @@
       if (s.pendingWanted) { run(); return; }
       if (!live) { if (s.stale) maybeReload(); return; }
       s.busy = true;
-      Portal.api('GET', '/api/apps/' + appId + '/changes?since=' + s.rev).then(function (r) {
+      Portal.api('GET', url('/changes?since=' + s.rev)).then(function (r) {
         if (r.reload) return reloadPage('The data was replaced on the server.');
         if (r.changes.length) {
           r.changes.forEach(function (c) { adapter.applyLive(c.ops); P.apply(s.known, c.ops); });
@@ -222,7 +230,7 @@
     // ---------------------------------------------------------- live connection
     function setConnected(on) { s.connected = on; Portal.setLive(on); }
     function connect() {
-      var es = new EventSource('/api/apps/' + appId + '/events');
+      var es = new EventSource(url('/events'));
       es.addEventListener('hello', function (e) {
         setConnected(true);
         var d = JSON.parse(e.data);

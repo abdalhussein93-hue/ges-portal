@@ -96,6 +96,7 @@ function importDocument(file) {
 
 module.exports = defineApp({
   id: 'duty',
+  perCamp: true, // a separate set of data per camp (see domain/camps.js)
   name: 'Duty Board',
   description: 'Duty roster per department: who works where and when, tasks, days off, coverage and print-outs.',
   icon: 'ti-calendar-time',

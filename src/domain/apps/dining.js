@@ -34,6 +34,7 @@ function importDocument(file) {
 
 module.exports = defineApp({
   id: 'dining',
+  perCamp: true, // a separate set of data per camp (see domain/camps.js)
   name: 'Dining Halls Management',
   description: 'Dining hall gates: barcode and NFC cards, scanning on phones, one meal per person, live counts and meal reports.',
   icon: 'ti-tools-kitchen-2',

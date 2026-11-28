@@ -155,7 +155,7 @@ describe('Dining Halls Management (PostgreSQL)', () => {
     assert.ok(page2.rows.every(r => r.id < page1.rows[2].id));
     const csv = await P.request('GET', '/api/dining/scans.csv?from=2026-11-27&to=2026-11-28', { cookie: viewer });
     assert.equal(csv.status, 200);
-    assert.match(csv.headers.get('content-disposition'), /dining_scans_2026-11-27_to_2026-11-28\.csv/);
+    assert.match(csv.headers.get('content-disposition'), /dining_scans_gv_2026-11-27_to_2026-11-28\.csv/);
     const lines = csv.text.trim().split('\r\n');
     assert.equal(lines.length, 1 + page1.rows.length + page2.rows.length);
     assert.match(lines[0], /Date,Time,Meal/);
@@ -186,7 +186,7 @@ describe('Dining Halls Management (PostgreSQL)', () => {
     assert.equal((await P.request('GET', '/api/dining/backup', { cookie: guard })).status, 403);
     const res = await P.request('GET', '/api/dining/backup', { cookie: admin });
     assert.equal(res.status, 200);
-    assert.match(res.headers.get('content-disposition'), /dining_backup_all_/);
+    assert.match(res.headers.get('content-disposition'), /dining_backup_gv_all_/);
     const file = JSON.parse(res.text);
     const total = (await P.request('GET', '/api/dining/scans?from=2020-01-01&to=2030-12-31&limit=200', { cookie: admin })).json.rows.length;
     assert.equal(file.entryLog.length, total);

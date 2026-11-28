@@ -293,6 +293,16 @@
       saveData();
     };
 
+    // Camps are the portal's: added on the Users page by a portal admin (the server enforces it)
+    ['addCamp', 'renameCamp', 'deleteCamp'].forEach(function (fn) {
+      if (typeof window[fn] !== 'function') return;
+      window[fn] = function () {
+        if (typeof buildCampSwitcher === 'function') buildCampSwitcher();
+        alert('Camps are added on the portal\'s "Users, backups & activity" page by a portal admin, so every app has the same camps.' +
+          (S.me && S.me.isAdmin ? '\n\nOpen it from the portal home page (⚙ Users, backups & activity).' : '\n\nAsk a portal admin.'));
+      };
+    });
+
     // Restoring a backup replaces data: Admins only (the server enforces it as well)
     ['restoreBackup', 'importCamp'].forEach(function (fn) {
       var orig = window[fn];
@@ -459,6 +469,7 @@
       Portal.cover(null);
     }).catch(function (e) {
       if (e === null || (e && e.status === 401)) return;
+      if (e && e.status === 403) { Portal.cover(Portal.esc(e.message) + '<br><a href="/">Back to all apps</a>'); return; }
       console.error(e);
       Portal.cover('Cannot reach the server.<br><small>' + Portal.esc(e && e.message) + '</small><br><button onclick="location.reload()">Try again</button>');
     });
