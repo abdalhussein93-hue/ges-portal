@@ -7,7 +7,7 @@ const Camps = require('../domain/camps');
 
 const SMALL_BODY = 16 * 1024;
 
-function register(router, { apps, documents, userAdmin, users, live, audit, config, camps }) {
+function register(router, { apps, documents, userAdmin, users, live, audit, config, camps, summary }) {
   const admin = { auth: 'admin' };
 
   /**
@@ -25,6 +25,11 @@ function register(router, { apps, documents, userAdmin, users, live, audit, conf
     const camp = campId ? camps.get(campId) : null;
     return { id: Camps.docKey(app.id, campId), app, campId, label: camp ? `${app.name} - ${camp.name}` : app.name };
   }
+
+  // ---------- summary for the home page ----------
+  router.get('/api/admin/summary', admin, async ctx => {
+    ctx.json(200, await summary.build());
+  });
 
   // ---------- camps ----------
   router.get('/api/admin/camps', admin, async ctx => {

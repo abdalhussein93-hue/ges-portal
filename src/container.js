@@ -15,6 +15,7 @@ const { LiveHub } = require('./services/live');
 const { DiningScansRepository } = require('./repositories/dining-scans');
 const { DiningService } = require('./services/dining');
 const { CampsService } = require('./services/camps');
+const { SummaryService } = require('./services/summary');
 
 /**
  * @param {{log?: Function, migrate?: boolean}} options  migrate=false: the caller migrates later
@@ -34,7 +35,8 @@ async function createContainer(config, { log = console.log, migrate: runMigratio
   const live = new LiveHub();
   const dining = new DiningService({ scans: new DiningScansRepository(db), documents, live, audit });
   const camps = new CampsService({ db, documents, apps, live, audit, log });
-  return { config, db, apps, users, sessions, audit, files, auth, userAdmin, documents, live, dining, camps };
+  const summary = new SummaryService({ documents, camps, scans: dining.scans, users, audit, live });
+  return { config, db, apps, users, sessions, audit, files, auth, userAdmin, documents, live, dining, camps, summary };
 }
 
 module.exports = { createContainer };

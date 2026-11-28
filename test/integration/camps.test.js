@@ -169,6 +169,22 @@ describe('Camps (PostgreSQL)', () => {
     await P.request('POST', '/api/admin/camps/dycc/restore', { cookie: admin, body: {} });
   });
 
+  it('the portal admin\'s summary: every camp\'s numbers; only portal admins', async () => {
+    assert.equal((await get(gvView, '/api/admin/summary')).status, 403);
+    const r = await get(admin, '/api/admin/summary');
+    assert.equal(r.status, 200, r.text);
+    const s = r.json;
+    assert.deepEqual(s.camps.map(c => c.id), ['gv', 'alfarah', 'dycc', 'dycc-new']);
+    const gv = s.camps[0], af = s.camps[1];
+    assert.deepEqual([gv.camp.blocks, gv.camp.beds, gv.camp.occupied], [2, 4, 1]);
+    assert.deepEqual([af.camp.blocks, af.camp.beds], [1, 1]);
+    assert.equal(gv.costing.today, 'not started');
+    assert.equal(af.dining.total, 1, 'today\'s meals in Alfarah');
+    assert.equal(gv.manpower, null);
+    assert.ok(s.portal.users >= 4);
+    assert.ok(s.recent.length > 0);
+  });
+
   it('per-camp backups and imports on the admin page', async () => {
     const snap = await P.request('POST', '/api/admin/apps/costing/snapshots?camp=alfarah', { cookie: admin, body: { label: 'test' } });
     assert.equal(snap.status, 200, snap.text);

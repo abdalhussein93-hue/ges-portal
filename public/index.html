@@ -42,6 +42,35 @@
   .notice{background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:12px;padding:12px 14px;margin-bottom:16px;display:none}
   .empty{color:var(--muted);padding:30px;text-align:center}
   footer{max-width:1080px;margin:0 auto 30px;padding:0 16px;color:var(--muted);font-size:12px}
+  /* portal admin summary */
+  .sum{margin-bottom:20px;background:#f8fafc;border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 6px 18px rgba(15,23,42,.06)}
+  .sum-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 2px 10px}
+  .sum-head h2{margin:0;font-size:16px}
+  .sum-head span{color:var(--muted);font-size:12px}
+  .sum-head button{margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
+  .portal-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  .kpi b{display:block;font-size:20px}
+  .kpi span{font-size:11.5px;color:var(--muted)}
+  .kpi.warn{border-color:#fca5a5;background:#fff5f5}.kpi.warn b{color:#b91c1c}
+  .camp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+  .camp-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .camp-card h3{margin:0;padding:10px 14px;font-size:15px;background:#0b1f45;color:#fff;display:flex;justify-content:space-between;align-items:center}
+  .camp-card h3 small{font-weight:600;opacity:.8;font-size:11.5px}
+  .line{display:flex;gap:10px;padding:9px 14px;border-top:1px solid var(--line);align-items:flex-start}
+  .line:first-of-type{border-top:0}
+  .line .dot{width:9px;height:9px;border-radius:3px;margin-top:5px;flex:none}
+  .line .txt{flex:1;font-size:12.5px;line-height:1.45}
+  .line .txt b{font-size:13px}
+  .line .muted{color:var(--muted)}
+  .occ{height:6px;border-radius:4px;background:#e2e8f0;overflow:hidden;margin:4px 0 2px}
+  .occ i{display:block;height:100%;background:#1d4ed8}
+  .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700}
+  .t-ok{background:#dcfce7;color:#15803d}.t-mid{background:#fef3c7;color:#92400e}.t-no{background:#fee2e2;color:#b91c1c}
+  .recent{background:var(--card);border:1px solid var(--line);border-radius:14px;margin-top:12px;padding:6px 14px}
+  .recent div{display:flex;gap:10px;font-size:12px;padding:5px 0;border-top:1px solid var(--line)}
+  .recent div:first-child{border-top:0}
+  .recent time{color:var(--muted);white-space:nowrap;min-width:92px}
 </style>
 </head>
 <body>
@@ -54,6 +83,7 @@
 </header>
 <main>
   <div class="notice" id="notice" role="alert"></div>
+  <section class="sum" id="summary" hidden aria-live="polite"></section>
   <div class="grid" id="apps"><div class="empty">Loading…</div></div>
 </main>
 <footer id="foot"></footer>
@@ -108,6 +138,97 @@
     if (e && e.status === 401) return;
     document.getElementById('apps').innerHTML = '<div class="empty">Cannot reach the server. <a href="/">Try again</a></div>';
   });
+})();
+</script>
+<script>
+/* Portal admin summary: the main numbers of every app, per camp (refreshes every minute). */
+(function () {
+  'use strict';
+  var Portal = window.GESPortal, esc = Portal.esc;
+  var box = document.getElementById('summary');
+  var COLORS = { camp: '#1d4ed8', manpower: '#059669', costing: '#d97706', duty: '#7c3aed', dining: '#b45309' };
+  var ACTION = {
+    'login': 'signed in', 'login-failed': 'failed sign-in', 'login-disabled': 'sign-in blocked (disabled)', 'logout': 'signed out',
+    'change-password': 'changed own password', 'user-create': 'created a user', 'user-update': 'changed a user', 'user-delete': 'deleted a user',
+    'change-denied': 'change blocked', 'change-conflict': 'change partly lost', 'import': 'imported data', 'export': 'downloaded data',
+    'backup-create': 'made a backup', 'backup-download': 'downloaded a backup', 'file-upload': 'uploaded a file',
+    'camp-add': 'added a camp', 'camp-delete': 'deleted a camp', 'camp-restore': 'restored a camp',
+    'dining-release': 'let people in again (dining)', 'dining-import': 'imported dining backups', 'dining-backup': 'downloaded a dining backup',
+    'dining-export': 'downloaded dining records', 'emergency-admin': 'emergency admin account reset', 'reset-admin': 'admin reset (server console)', 'create-first-admin': 'first admin created'
+  };
+  var APPS = { camp: 'Camp', manpower: 'Manpower', costing: 'Costing', duty: 'Duty Board', dining: 'Dining' };
+  var fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+  function kpi(n, label, warn) { return '<div class="kpi' + (warn && n ? ' warn' : '') + '"><b>' + esc(n) + '</b><span>' + esc(label) + '</span></div>'; }
+  function line(app, html) { return '<div class="line"><span class="dot" style="background:' + COLORS[app] + '"></span><div class="txt">' + html + '</div></div>'; }
+  function appLabel(id) { if (!id) return ''; var p = String(id).split('~'); return (APPS[p[0]] || p[0]) + (p[1] ? ' · ' + p[1] : ''); }
+
+  function campCard(c) {
+    var h = '';
+    var k = c.camp;
+    if (k && k.beds) {
+      h += line('camp', '<b>Camp Management</b> · ' + k.blocks + ' blocks · <b>' + k.occupancy + '%</b> occupied' +
+        '<div class="occ"><i style="width:' + k.occupancy + '%"></i></div>' +
+        '<span class="muted">' + k.occupied + ' occupied · ' + k.vacant + ' vacant · ' + k.reserved + ' reserved of ' + k.beds + ' beds</span><br>' +
+        'Today: <b>' + k.checkIns + '</b> check-ins · <b>' + k.checkOuts + '</b> check-outs' + (k.transfers ? ' · ' + k.transfers + ' transfers' : '') +
+        (k.pendingApprovals ? ' · <span class="tag t-mid">' + k.pendingApprovals + ' waiting for approval</span>' : ''));
+    } else {
+      h += line('camp', '<b>Camp Management</b> · <span class="muted">no blocks in this camp yet</span>');
+    }
+    var d = c.dining;
+    h += line('dining', d ? '<b>Dining Halls</b> · now: ' + esc(d.meal) + '<br>Today: <b>' + d.total + '</b> meals' +
+      (Object.keys(d.byHall).length ? ' <span class="muted">(' + Object.keys(d.byHall).map(function (x) { return esc(x) + ' ' + d.byHall[x]; }).join(' · ') + ')</span>' : '') +
+      (d.denied ? ' · <span class="tag t-no">' + d.denied + ' refused</span>' : '')
+      : '<b>Dining Halls</b> · <span class="muted">not set up</span>');
+    var co = c.costing;
+    if (co) {
+      var cls = co.today === 'confirmed' ? 't-ok' : co.today === 'in progress' ? 't-mid' : 't-no';
+      h += line('costing', '<b>Daily Costing</b> · today: <span class="tag ' + cls + '">' + esc(co.today) + '</span>' +
+        (co.itemsToday ? ' <span class="muted">' + co.itemsToday + ' items entered</span>' : '') +
+        (co.confirmedBy ? ' <span class="muted">by ' + esc(co.confirmedBy) + '</span>' : '') +
+        (co.pendingRequests ? '<br><span class="tag t-mid">' + co.pendingRequests + ' change request' + (co.pendingRequests > 1 ? 's' : '') + ' waiting</span>' : '') +
+        (co.lastConfirmed && co.today !== 'confirmed' ? '<br><span class="muted">last confirmed day: ' + esc(co.lastConfirmed) + '</span>' : ''));
+    } else h += line('costing', '<b>Daily Costing</b> · <span class="muted">not set up</span>');
+    h += line('manpower', c.manpower ? '<b>Manpower</b> · <b>' + c.manpower.active + '</b> active staff <span class="muted">of ' + c.manpower.total + ' on the list</span>'
+      : '<b>Manpower</b> · <span class="muted">not set up</span>');
+    h += line('duty', c.duty ? '<b>Duty Board</b> · ' + c.duty.depts + ' departments · ' + c.duty.staff + ' staff'
+      : '<b>Duty Board</b> · <span class="muted">not set up</span>');
+    return '<div class="camp-card"><h3>🏕 ' + esc(c.name) + '<small>' + (k && k.beds ? k.occupied + ' / ' + k.beds + ' beds' : '') + '</small></h3>' + h + '</div>';
+  }
+
+  function render(s) {
+    var p = s.portal;
+    box.innerHTML = '<div class="sum-head"><h2>📊 Today at a glance</h2><span>' + esc(s.day) + ' · updated ' + esc(fmtTime.format(new Date(s.at))) + ' · only portal admins see this</span>' +
+      '<button type="button" id="sumRefresh">↻ Refresh</button></div>' +
+      '<div class="portal-row">' +
+        kpi(p.online.length, 'in an app now' + (p.online.length ? ': ' + p.online.slice(0, 4).join(', ') + (p.online.length > 4 ? '…' : '') : '')) +
+        kpi(p.signIns, 'sign-ins (24 h)') +
+        kpi(p.failedLogins, 'failed sign-ins (24 h)', true) +
+        kpi(p.blockedChanges, 'blocked changes (24 h)', true) +
+        kpi(p.users, 'active accounts' + (p.tempPasswords ? ' · ' + p.tempPasswords + ' not signed in yet' : '')) +
+      '</div>' +
+      '<div class="camp-grid">' + s.camps.map(campCard).join('') + '</div>' +
+      '<div class="recent">' + (s.recent.map(function (a) {
+        return '<div><time>' + esc(fmtTime.format(new Date(a.at))) + '</time><span><b>' + esc(a.username || 'system') + '</b> ' + esc(ACTION[a.action] || a.action) +
+          (a.appId ? ' <span style="color:var(--muted)">· ' + esc(appLabel(a.appId)) + '</span>' : '') + '</span></div>';
+      }).join('') || '<div>No activity yet.</div>') + '</div>';
+    document.getElementById('sumRefresh').onclick = load;
+    box.hidden = false;
+  }
+
+  function load() {
+    Portal.api('GET', '/api/admin/summary').then(render, function (e) {
+      if (e && (e.status === 401 || e.status === 403)) return;
+      box.hidden = false;
+      box.innerHTML = '<div class="sum-head"><h2>📊 Today at a glance</h2><span>could not load: ' + esc(e && e.message) + '</span></div>';
+    });
+  }
+
+  Portal.api('GET', '/api/me').then(function (me) {
+    if (!me.isAdmin) return;
+    load();
+    setInterval(function () { if (document.visibilityState === 'visible') load(); }, 60000);
+  }, function () { });
 })();
 </script>
 </body>
