@@ -42,36 +42,63 @@
   .notice{background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:12px;padding:12px 14px;margin-bottom:16px;display:none}
   .empty{color:var(--muted);padding:30px;text-align:center}
   footer{max-width:1080px;margin:0 auto 30px;padding:0 16px;color:var(--muted);font-size:12px}
-  /* portal admin summary */
-  .sum{margin-bottom:20px;background:#f8fafc;border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 6px 18px rgba(15,23,42,.06)}
-  .sum-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 2px 10px}
-  .sum-head h2{margin:0;font-size:16px}
-  .sum-head span{color:var(--muted);font-size:12px}
-  .sum-head button{margin-left:auto;border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 10px;font:inherit;font-size:12px;cursor:pointer}
-  .portal-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:12px}
-  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
-  .kpi b{display:block;font-size:20px}
-  .kpi span{font-size:11.5px;color:var(--muted)}
-  .kpi.warn{border-color:#fca5a5;background:#fff5f5}.kpi.warn b{color:#b91c1c}
-  .camp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
-  .camp-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-  .camp-card h3{margin:0;padding:10px 14px;font-size:15px;background:#0b1f45;color:#fff;display:flex;justify-content:space-between;align-items:center}
-  .camp-card h3 small{font-weight:600;opacity:.8;font-size:11.5px}
-  .line{display:flex;gap:10px;padding:9px 14px;border-top:1px solid var(--line);align-items:flex-start}
-  .line:first-of-type{border-top:0}
-  .line .dot{width:9px;height:9px;border-radius:3px;margin-top:5px;flex:none}
-  .line .txt{flex:1;font-size:12.5px;line-height:1.45}
-  .line .txt b{font-size:13px}
-  .line .muted{color:var(--muted)}
-  .occ{height:6px;border-radius:4px;background:#e2e8f0;overflow:hidden;margin:4px 0 2px}
-  .occ i{display:block;height:100%;background:#1d4ed8}
-  .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700}
-  .t-ok{background:#dcfce7;color:#15803d}.t-mid{background:#fef3c7;color:#92400e}.t-no{background:#fee2e2;color:#b91c1c}
-  .recent{background:var(--card);border:1px solid var(--line);border-radius:14px;margin-top:12px;padding:6px 14px}
-  .recent div{display:flex;gap:10px;font-size:12px;padding:5px 0;border-top:1px solid var(--line)}
-  .recent div:first-child{border-top:0}
-  .recent time{color:var(--muted);white-space:nowrap;min-width:92px}
-</style>
+  /* ===== portal admin dashboard ===== */
+  .dash{margin-bottom:22px;background:#f8fafc;border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 10px 30px rgba(15,23,42,.08)}
+  .dash-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .dash-top h2{margin:0;font-size:18px;letter-spacing:.2px}
+  .dash-meta{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.2)}
+  .dash-actions{margin-left:auto;display:flex;gap:8px}
+  .dash-actions a,.dash-actions button{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 12px;font:inherit;font-size:12.5px;font-weight:600;color:var(--text);text-decoration:none;cursor:pointer}
+  .dash-actions a:hover,.dash-actions button:hover{background:#f1f5f9}
+  .alerts{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+  .alert{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;font-size:13px;text-decoration:none;color:inherit;border:1px solid}
+  .alert b{font-weight:700}
+  .alert .go{margin-left:auto;font-weight:700;font-size:12px;white-space:nowrap}
+  .a-red{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+  .a-amber{background:#fffbeb;border-color:#fde68a;color:#92400e}
+  .a-green{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+  .totals{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .total{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;gap:12px;align-items:center}
+  .total .ic{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:20px;flex:none}
+  .total .v{font-size:24px;font-weight:800;line-height:1.1}
+  .total .l{font-size:12px;color:var(--muted);margin-top:2px}
+  .total .s{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .camp-sec{background:#fff;border:1px solid var(--line);border-radius:16px;margin-bottom:14px;overflow:hidden}
+  .camp-sec-h{display:flex;align-items:center;gap:12px;padding:12px 16px;background:linear-gradient(100deg,#0b1f45,#1e3a8a);color:#fff;flex-wrap:wrap}
+  .camp-sec-h h3{margin:0;font-size:16px}
+  .camp-sec-h .occ-big{margin-left:auto;font-size:12.5px;opacity:.9;display:flex;align-items:center;gap:8px}
+  .ring{--p:0;width:34px;height:34px;border-radius:50%;background:conic-gradient(#60a5fa calc(var(--p)*1%),rgba(255,255,255,.18) 0);display:flex;align-items:center;justify-content:center}
+  .ring span{width:26px;height:26px;border-radius:50%;background:#0f2a66;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800}
+  .tiles{display:grid;grid-template-columns:repeat(5,1fr)}
+  .tile{padding:14px 16px;border-left:1px solid var(--line);text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:6px;min-width:0;transition:background .15s}
+  .tile:first-child{border-left:0}
+  a.tile:hover{background:#f8fafc}
+  .tile-h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .tile-h i{width:8px;height:8px;border-radius:2px;display:inline-block}
+  .tile .big{font-size:22px;font-weight:800;line-height:1.1}
+  .tile .big small{font-size:12px;font-weight:600;color:var(--muted)}
+  .tile .rows{font-size:12.5px;color:#334155;line-height:1.55}
+  .tile .rows span{color:var(--muted)}
+  .tile .none{color:var(--muted);font-size:12.5px}
+  .meter{height:6px;border-radius:4px;background:#e2e8f0;overflow:hidden}
+  .meter i{display:block;height:100%;border-radius:4px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+  .p-ok{background:#dcfce7;color:#15803d}.p-mid{background:#fef3c7;color:#92400e}.p-no{background:#fee2e2;color:#b91c1c}.p-gray{background:#f1f5f9;color:#475569}
+  .halls{display:flex;flex-wrap:wrap;gap:4px}
+  .halls span{background:#f1f5f9;border-radius:6px;padding:1px 6px;font-size:11px;color:#334155}
+  .act{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .act-h{display:flex;align-items:center;padding:11px 16px;border-bottom:1px solid var(--line);font-weight:700;font-size:14px}
+  .act-h a{margin-left:auto;font-size:12px;color:#1d4ed8;text-decoration:none;font-weight:600}
+  .act table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .act td{padding:8px 16px;border-top:1px solid #f1f5f9}
+  .act tr:first-child td{border-top:0}
+  .act td.t{color:var(--muted);white-space:nowrap;width:1%}
+  .act td.app{color:var(--muted);text-align:right;white-space:nowrap}
+  .act .ev{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;background:#94a3b8}
+  .act .ev.bad{background:#ef4444}.act .ev.good{background:#22c55e}
+  @media (max-width:1000px){.tiles{grid-template-columns:repeat(2,1fr)}.tile{border-top:1px solid var(--line)}.tile:nth-child(odd){border-left:0}.totals{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:560px){.tiles{grid-template-columns:1fr}.tile{border-left:0}.totals{grid-template-columns:1fr 1fr}.total{padding:10px}.total .ic{display:none}.dash{padding:12px}}</style>
 </head>
 <body>
 <header>
@@ -83,7 +110,7 @@
 </header>
 <main>
   <div class="notice" id="notice" role="alert"></div>
-  <section class="sum" id="summary" hidden aria-live="polite"></section>
+  <section class="dash" id="summary" hidden aria-live="polite"></section>
   <div class="grid" id="apps"><div class="empty">Loading…</div></div>
 </main>
 <footer id="foot"></footer>
@@ -141,77 +168,136 @@
 })();
 </script>
 <script>
-/* Portal admin summary: the main numbers of every app, per camp (refreshes every minute). */
+/* Portal admin dashboard: what needs attention, totals, every camp's apps, latest activity (refreshes every minute). */
 (function () {
   'use strict';
   var Portal = window.GESPortal, esc = Portal.esc;
   var box = document.getElementById('summary');
-  var COLORS = { camp: '#1d4ed8', manpower: '#059669', costing: '#d97706', duty: '#7c3aed', dining: '#b45309' };
+  var APP = {
+    camp: { name: 'Camp Management', color: '#1d4ed8', path: '/camp/' },
+    dining: { name: 'Dining Halls', color: '#b45309', path: '/dining/' },
+    costing: { name: 'Daily Costing', color: '#d97706', path: '/costing/' },
+    manpower: { name: 'Manpower', color: '#059669', path: '/manpower/' },
+    duty: { name: 'Duty Board', color: '#7c3aed', path: '/duty/' }
+  };
   var ACTION = {
-    'login': 'signed in', 'login-failed': 'failed sign-in', 'login-disabled': 'sign-in blocked (disabled)', 'logout': 'signed out',
+    'login': 'signed in', 'login-failed': 'failed sign-in', 'login-disabled': 'sign-in blocked (account disabled)', 'logout': 'signed out',
     'change-password': 'changed own password', 'user-create': 'created a user', 'user-update': 'changed a user', 'user-delete': 'deleted a user',
     'change-denied': 'change blocked', 'change-conflict': 'change partly lost', 'import': 'imported data', 'export': 'downloaded data',
     'backup-create': 'made a backup', 'backup-download': 'downloaded a backup', 'file-upload': 'uploaded a file',
     'camp-add': 'added a camp', 'camp-delete': 'deleted a camp', 'camp-restore': 'restored a camp',
     'dining-release': 'let people in again (dining)', 'dining-import': 'imported dining backups', 'dining-backup': 'downloaded a dining backup',
-    'dining-export': 'downloaded dining records', 'emergency-admin': 'emergency admin account reset', 'reset-admin': 'admin reset (server console)', 'create-first-admin': 'first admin created'
+    'dining-export': 'downloaded dining records', 'emergency-admin': 'emergency admin account reset', 'reset-admin': 'admin reset (server console)',
+    'create-first-admin': 'first admin created'
   };
-  var APPS = { camp: 'Camp', manpower: 'Manpower', costing: 'Costing', duty: 'Duty Board', dining: 'Dining' };
-  var fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  var BAD = { 'login-failed': 1, 'login-disabled': 1, 'change-denied': 1, 'change-conflict': 1 };
+  var GOOD = { 'login': 1 };
+  var fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  var fmtDay = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  var fmtShort = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short' });
+  var num = function (x) { return Number(x || 0).toLocaleString('en-US'); };
+  var pct = function (a, b) { return b ? Math.round(a / b * 100) : 0; };
+  function link(app, campId) { return APP[app].path + (app === 'camp' ? '' : '?camp=' + encodeURIComponent(campId)); }
+  function campName(s, id) { var c = s.camps.find(function (x) { return x.id === id; }); return c ? c.name : id; }
+  function appLabel(s, id) {
+    if (!id) return '';
+    var p = String(id).split('~');
+    return ((APP[p[0]] && APP[p[0]].name) || p[0]) + (p[1] ? ' · ' + campName(s, p[1]) : '');
+  }
 
-  function kpi(n, label, warn) { return '<div class="kpi' + (warn && n ? ' warn' : '') + '"><b>' + esc(n) + '</b><span>' + esc(label) + '</span></div>'; }
-  function line(app, html) { return '<div class="line"><span class="dot" style="background:' + COLORS[app] + '"></span><div class="txt">' + html + '</div></div>'; }
-  function appLabel(id) { if (!id) return ''; var p = String(id).split('~'); return (APPS[p[0]] || p[0]) + (p[1] ? ' · ' + p[1] : ''); }
+  function alerts(s) {
+    var out = [], p = s.portal;
+    (s.hiddenBlocks || []).forEach(function (h) {
+      out.push({ lvl: 'red', html: '<b>' + num(h.blocks) + ' block' + (h.blocks > 1 ? 's' : '') + ' (' + num(h.beds) + ' beds, ' + num(h.occupied) + ' occupied)</b> belong to the camp "' + esc(h.name) + '", which is ' +
+        (h.deletedCampId ? 'deleted' : 'not in the camp list') + ': nobody can see them in Camp Management.', href: '/admin', go: h.deletedCampId ? 'Restore the camp →' : 'Check camps →' });
+    });
+    if (p.failedLogins) out.push({ lvl: 'red', html: '<b>' + num(p.failedLogins) + ' failed sign-in' + (p.failedLogins > 1 ? 's' : '') + '</b> in the last 24 hours.', href: '/admin', go: 'Activity log →' });
+    if (p.blockedChanges) out.push({ lvl: 'amber', html: '<b>' + num(p.blockedChanges) + ' change' + (p.blockedChanges > 1 ? 's were' : ' was') + ' blocked</b> by the permission rules in the last 24 hours.', href: '/admin', go: 'Activity log →' });
+    s.camps.forEach(function (c) {
+      if (c.camp && c.camp.pendingApprovals) out.push({ lvl: 'amber', html: '<b>' + c.camp.pendingApprovals + ' Camp Management request' + (c.camp.pendingApprovals > 1 ? 's' : '') + '</b> waiting for approval · ' + esc(c.name) + '.', href: link('camp', c.id), go: 'Review →' });
+      if (c.costing && c.costing.pendingRequests) out.push({ lvl: 'amber', html: '<b>' + c.costing.pendingRequests + ' Costing change request' + (c.costing.pendingRequests > 1 ? 's' : '') + '</b> waiting · ' + esc(c.name) + '.', href: link('costing', c.id), go: 'Review →' });
+      if (c.costing && c.costing.yesterday === 'in progress') out.push({ lvl: 'amber', html: '<b>Yesterday\'s Costing entry is not confirmed</b> · ' + esc(c.name) + '.', href: link('costing', c.id), go: 'Open →' });
+    });
+    if (p.tempPasswords) out.push({ lvl: 'amber', html: '<b>' + p.tempPasswords + ' account' + (p.tempPasswords > 1 ? 's have' : ' has') + ' not signed in yet</b> (still on the temporary password).', href: '/admin', go: 'Users →' });
+    if (!out.length) out.push({ lvl: 'green', html: '<b>All clear</b> — nothing needs your attention right now.' });
+    return out.map(function (a) {
+      var tag = a.href ? 'a' : 'div';
+      return '<' + tag + ' class="alert a-' + a.lvl + '"' + (a.href ? ' href="' + esc(a.href) + '"' : '') + '><span>' + (a.lvl === 'red' ? '⛔' : a.lvl === 'amber' ? '⚠️' : '✅') + '</span><span>' + a.html + '</span>' +
+        (a.go ? '<span class="go">' + esc(a.go) + '</span>' : '') + '</' + tag + '>';
+    }).join('');
+  }
 
-  function campCard(c) {
-    var h = '';
-    var k = c.camp;
-    if (k && k.beds) {
-      h += line('camp', '<b>Camp Management</b> · ' + k.blocks + ' blocks · <b>' + k.occupancy + '%</b> occupied' +
-        '<div class="occ"><i style="width:' + k.occupancy + '%"></i></div>' +
-        '<span class="muted">' + k.occupied + ' occupied · ' + k.vacant + ' vacant · ' + k.reserved + ' reserved of ' + k.beds + ' beds</span><br>' +
-        'Today: <b>' + k.checkIns + '</b> check-ins · <b>' + k.checkOuts + '</b> check-outs' + (k.transfers ? ' · ' + k.transfers + ' transfers' : '') +
-        (k.pendingApprovals ? ' · <span class="tag t-mid">' + k.pendingApprovals + ' waiting for approval</span>' : ''));
-    } else {
-      h += line('camp', '<b>Camp Management</b> · <span class="muted">no blocks in this camp yet</span>');
-    }
-    var d = c.dining;
-    h += line('dining', d ? '<b>Dining Halls</b> · now: ' + esc(d.meal) + '<br>Today: <b>' + d.total + '</b> meals' +
-      (Object.keys(d.byHall).length ? ' <span class="muted">(' + Object.keys(d.byHall).map(function (x) { return esc(x) + ' ' + d.byHall[x]; }).join(' · ') + ')</span>' : '') +
-      (d.denied ? ' · <span class="tag t-no">' + d.denied + ' refused</span>' : '')
-      : '<b>Dining Halls</b> · <span class="muted">not set up</span>');
-    var co = c.costing;
-    if (co) {
-      var cls = co.today === 'confirmed' ? 't-ok' : co.today === 'in progress' ? 't-mid' : 't-no';
-      h += line('costing', '<b>Daily Costing</b> · today: <span class="tag ' + cls + '">' + esc(co.today) + '</span>' +
-        (co.itemsToday ? ' <span class="muted">' + co.itemsToday + ' items entered</span>' : '') +
-        (co.confirmedBy ? ' <span class="muted">by ' + esc(co.confirmedBy) + '</span>' : '') +
-        (co.pendingRequests ? '<br><span class="tag t-mid">' + co.pendingRequests + ' change request' + (co.pendingRequests > 1 ? 's' : '') + ' waiting</span>' : '') +
-        (co.lastConfirmed && co.today !== 'confirmed' ? '<br><span class="muted">last confirmed day: ' + esc(co.lastConfirmed) + '</span>' : ''));
-    } else h += line('costing', '<b>Daily Costing</b> · <span class="muted">not set up</span>');
-    h += line('manpower', c.manpower ? '<b>Manpower</b> · <b>' + c.manpower.active + '</b> active staff <span class="muted">of ' + c.manpower.total + ' on the list</span>'
-      : '<b>Manpower</b> · <span class="muted">not set up</span>');
-    h += line('duty', c.duty ? '<b>Duty Board</b> · ' + c.duty.depts + ' departments · ' + c.duty.staff + ' staff'
-      : '<b>Duty Board</b> · <span class="muted">not set up</span>');
-    return '<div class="camp-card"><h3>🏕 ' + esc(c.name) + '<small>' + (k && k.beds ? k.occupied + ' / ' + k.beds + ' beds' : '') + '</small></h3>' + h + '</div>';
+  function totals(s) {
+    var beds = 0, occ = 0, meals = 0, staff = 0, onLeave = 0, hasStaff = false;
+    s.camps.forEach(function (c) {
+      if (c.camp) { beds += c.camp.beds; occ += c.camp.occupied; }
+      if (c.dining) meals += c.dining.total;
+      if (c.manpower) { hasStaff = true; staff += c.manpower.mainList; onLeave += c.manpower.onLeave; }
+    });
+    var p = s.portal;
+    var t = function (ic, bg, v, l, sub) { return '<div class="total"><div class="ic" style="background:' + bg + '">' + ic + '</div><div><div class="v">' + v + '</div><div class="l">' + l + '</div>' + (sub ? '<div class="s">' + sub + '</div>' : '') + '</div></div>'; };
+    return '<div class="totals">' +
+      t('🛏', '#dbeafe', pct(occ, beds) + '%', 'Beds occupied (all camps)', num(occ) + ' of ' + num(beds) + ' beds') +
+      t('🍽', '#ffedd5', num(meals), 'Meals served today', s.camps.filter(function (c) { return c.dining; }).length + ' camp(s) with dining halls') +
+      t('👷', '#dcfce7', hasStaff ? num(staff) : '—', 'Staff on the Main List', hasStaff ? num(onLeave) + ' on leave today' : 'Manpower not set up') +
+      t('🟢', '#e0e7ff', num(p.online.length), 'People working in an app now', esc(p.online.slice(0, 3).join(', ') + (p.online.length > 3 ? ' +' + (p.online.length - 3) : '')) || 'nobody right now') +
+      '</div>';
+  }
+
+  function tile(app, campId, inner) {
+    return '<a class="tile" href="' + esc(link(app, campId)) + '" title="Open ' + esc(APP[app].name) + '"><div class="tile-h"><i style="background:' + APP[app].color + '"></i>' + esc(APP[app].name) + '</div>' + inner + '</a>';
+  }
+  function none(text) { return '<div class="none">' + text + '</div>'; }
+
+  function campSection(c) {
+    var k = c.camp, d = c.dining, co = c.costing, m = c.manpower, du = c.duty;
+    var occ = k && k.beds ? k.occupancy : 0;
+    var h = '<div class="camp-sec"><div class="camp-sec-h"><h3>🏕 ' + esc(c.name) + '</h3>' +
+      (k && k.beds ? '<div class="occ-big"><div class="ring" style="--p:' + occ + '"><span>' + occ + '%</span></div>' + num(k.occupied) + ' / ' + num(k.beds) + ' beds occupied</div>' : '<div class="occ-big">no blocks yet</div>') +
+      '</div><div class="tiles">';
+    h += tile('camp', c.id, k && k.beds
+      ? '<div class="big">' + occ + '% <small>occupied</small></div><div class="meter"><i style="width:' + occ + '%;background:#1d4ed8"></i></div>' +
+        '<div class="rows">' + num(k.vacant) + ' vacant · ' + num(k.reserved) + ' reserved · ' + k.blocks + (k.blocks === 1 ? ' block' : ' blocks') + '<br>' +
+        'Today: <b>' + k.checkIns + '</b> in · <b>' + k.checkOuts + '</b> out' + (k.transfers ? ' · <b>' + k.transfers + '</b> transfers' : '') + '</div>' +
+        (k.pendingApprovals ? '<div><span class="pill p-mid">' + k.pendingApprovals + ' waiting for approval</span></div>' : '')
+      : none('No blocks in this camp yet.'));
+    var halls = d ? Object.keys(d.byHall) : [];
+    h += tile('dining', c.id, d
+      ? '<div class="big">' + num(d.total) + ' <small>meals today</small></div>' +
+        '<div class="rows"><span>Now:</span> ' + esc(d.meal) + (d.denied ? ' · <span class="pill p-no">' + d.denied + ' refused</span>' : '') + '</div>' +
+        (halls.length ? '<div class="halls">' + halls.map(function (x) { return '<span>' + esc(x.replace('Worker', 'W')) + ' ' + num(d.byHall[x]) + '</span>'; }).join('') + '</div>' : '')
+      : none('Not set up for this camp.'));
+    var pill = function (st) { return '<span class="pill ' + (st === 'confirmed' ? 'p-ok' : st === 'in progress' ? 'p-mid' : 'p-gray') + '">' + esc(st) + '</span>'; };
+    h += tile('costing', c.id, co
+      ? '<div class="rows"><span>Today:</span> ' + pill(co.today) + (co.itemsToday ? ' <span>' + co.itemsToday + ' items</span>' : '') +
+        '<br><span>Yesterday:</span> ' + pill(co.yesterday) +
+        (co.lastConfirmed ? '<br><span>Last confirmed:</span> ' + esc(fmtShort.format(new Date(co.lastConfirmed + 'T12:00:00Z'))) : '') + '</div>' +
+        (co.pendingRequests ? '<div><span class="pill p-mid">' + co.pendingRequests + ' change request' + (co.pendingRequests > 1 ? 's' : '') + '</span></div>' : '')
+      : none('Not set up for this camp.'));
+    h += tile('manpower', c.id, m
+      ? '<div class="big">' + num(m.mainList) + ' <small>on the Main List</small></div>' +
+        '<div class="rows">' + num(m.onLeave) + ' on leave today · ' + num(m.leaving) + ' leaving<br><span>' + num(m.total) + ' records in total</span></div>'
+      : none('Not set up for this camp.'));
+    h += tile('duty', c.id, du
+      ? '<div class="big">' + num(du.staff) + ' <small>staff</small></div><div class="rows">' + du.depts + ' department' + (du.depts === 1 ? '' : 's') + '</div>'
+      : none('Not set up for this camp.'));
+    return h + '</div></div>';
+  }
+
+  function activity(s) {
+    return '<div class="act"><div class="act-h">🕘 Latest activity<a href="/admin">Full activity log →</a></div><table>' +
+      (s.recent.map(function (a) {
+        return '<tr><td class="t">' + esc(fmtShort.format(new Date(a.at))) + ' ' + esc(fmtTime.format(new Date(a.at))) + '</td>' +
+          '<td><span class="ev' + (BAD[a.action] ? ' bad' : GOOD[a.action] ? ' good' : '') + '"></span><b>' + esc(a.username || 'system') + '</b> ' + esc(ACTION[a.action] || a.action) + '</td>' +
+          '<td class="app">' + esc(appLabel(s, a.appId)) + '</td></tr>';
+      }).join('') || '<tr><td>No activity yet.</td></tr>') + '</table></div>';
   }
 
   function render(s) {
-    var p = s.portal;
-    box.innerHTML = '<div class="sum-head"><h2>📊 Today at a glance</h2><span>' + esc(s.day) + ' · updated ' + esc(fmtTime.format(new Date(s.at))) + ' · only portal admins see this</span>' +
-      '<button type="button" id="sumRefresh">↻ Refresh</button></div>' +
-      '<div class="portal-row">' +
-        kpi(p.online.length, 'in an app now' + (p.online.length ? ': ' + p.online.slice(0, 4).join(', ') + (p.online.length > 4 ? '…' : '') : '')) +
-        kpi(p.signIns, 'sign-ins (24 h)') +
-        kpi(p.failedLogins, 'failed sign-ins (24 h)', true) +
-        kpi(p.blockedChanges, 'blocked changes (24 h)', true) +
-        kpi(p.users, 'active accounts' + (p.tempPasswords ? ' · ' + p.tempPasswords + ' not signed in yet' : '')) +
-      '</div>' +
-      '<div class="camp-grid">' + s.camps.map(campCard).join('') + '</div>' +
-      '<div class="recent">' + (s.recent.map(function (a) {
-        return '<div><time>' + esc(fmtTime.format(new Date(a.at))) + '</time><span><b>' + esc(a.username || 'system') + '</b> ' + esc(ACTION[a.action] || a.action) +
-          (a.appId ? ' <span style="color:var(--muted)">· ' + esc(appLabel(a.appId)) + '</span>' : '') + '</span></div>';
-      }).join('') || '<div>No activity yet.</div>') + '</div>';
+    box.innerHTML = '<div class="dash-top"><h2>📊 Operations overview</h2>' +
+      '<span class="dash-meta"><span class="live-dot"></span>' + esc(fmtDay.format(new Date(s.at))) + ' · updated ' + esc(fmtTime.format(new Date(s.at))) + ' · refreshes every minute</span>' +
+      '<div class="dash-actions"><a href="/admin">⚙ Users &amp; camps</a><button type="button" id="sumRefresh">↻ Refresh</button></div></div>' +
+      '<div class="alerts">' + alerts(s) + '</div>' + totals(s) + s.camps.map(campSection).join('') + activity(s);
     document.getElementById('sumRefresh').onclick = load;
     box.hidden = false;
   }
@@ -220,7 +306,8 @@
     Portal.api('GET', '/api/admin/summary').then(render, function (e) {
       if (e && (e.status === 401 || e.status === 403)) return;
       box.hidden = false;
-      box.innerHTML = '<div class="sum-head"><h2>📊 Today at a glance</h2><span>could not load: ' + esc(e && e.message) + '</span></div>';
+      box.innerHTML = '<div class="dash-top"><h2>📊 Operations overview</h2><span class="dash-meta">could not load: ' + esc(e && e.message) + '</span>' +
+        '<div class="dash-actions"><button type="button" onclick="location.reload()">↻ Try again</button></div></div>';
     });
   }
 

@@ -29,7 +29,9 @@ test('summary: Camp Management numbers per camp (beds, today\'s movements, appro
 test('summary: Daily Costing today - not started, in progress, confirmed', () => {
   const doc = { months: { '2026-11': { cons: {}, received: {} } }, dayLocks: { '2026-11-20': { by: 'Cook' } }, dayRequests: [{ status: 'pending' }, { status: 'approved' }] };
   let r = S.costingNumbers(doc, '2026-11-28');
-  assert.deepEqual([r.today, r.itemsToday, r.pendingRequests, r.lastConfirmed], ['not started', 0, 1, '2026-11-20']);
+  assert.deepEqual([r.today, r.yesterday, r.itemsToday, r.pendingRequests, r.lastConfirmed], ['not started', 'not started', 0, 1, '2026-11-20']);
+  doc.months['2026-11'].cons['27'] = { i9: { g: 1 } };
+  assert.equal(S.costingNumbers(doc, '2026-11-28').yesterday, 'in progress', 'entered yesterday but not confirmed');
   doc.months['2026-11'].cons['28'] = { i1: { g: 2 }, i2: { g: 0 } };
   doc.months['2026-11'].received['28'] = { i3: 5 };
   r = S.costingNumbers(doc, '2026-11-28');
@@ -41,9 +43,33 @@ test('summary: Daily Costing today - not started, in progress, confirmed', () =>
   assert.equal(S.costingNumbers(doc, '2026-11-05').itemsToday, 1, 'day keys may be padded');
 });
 
-test('summary: Manpower and Duty Board', () => {
-  assert.deepEqual(S.manpowerNumbers({ keys: { gesStaffV4: { j: [{ status: 'Active' }, { status: 'Resigned' }, { status: 'active' }] } } }), { total: 3, active: 2 });
-  assert.equal(S.manpowerNumbers({ keys: {} }), null);
+test('summary: Manpower counts its Main List exactly like the app', () => {
+  const staff = [
+    { dept: 'Kitchen' },                                                                  // on the roster (no status needed)
+    { dept: 'Kitchen', status: 'Active' },
+    { dept: 'Kitchen', movementType: 'Resigned' },                                        // serving notice: still counted
+    { dept: 'Kitchen', movementType: 'Resigned', inMainList: false },                     // gone
+    { dept: 'Kitchen', onVacation: true, vacationStart: '2026-11-20' },                    // on leave today
+    { dept: 'Kitchen', onVacation: true, vacationStart: '2026-12-20' },                    // leave planned later
+    { dept: 'Office' },                                                                   // department not counted
+  ];
+  const doc = { keys: { gesStaffV4: { j: staff }, gesDeptCount: { j: { Office: false } } } };
+  assert.deepEqual(S.manpowerNumbers(doc, '2026-11-28'), { total: 7, mainList: 4, onLeave: 1, leaving: 2 });
+  doc.keys.gesSettings = { j: { countVac: true } };
+  assert.equal(S.manpowerNumbers(doc, '2026-11-28').mainList, 5, 'the setting "count people on leave" is followed');
+  assert.equal(S.manpowerNumbers({ keys: {} }, '2026-11-28'), null);
+});
+
+test('summary: blocks of a deleted or unknown camp are reported', () => {
+  const doc = {
+    BLOCKS_META: { A: {}, F: { camp: 'Alfarah Asab' }, G: { camp: 'Alfarah Asab' } },
+    campData: { F: { rooms: { f1: { beds: [{ status: 'occupied' }, {}] } } }, G: { rooms: {} } },
+  };
+  assert.deepEqual(S.hiddenBlocks(doc, ['Global Village', 'AL FARAH']), [{ name: 'Alfarah Asab', blocks: 2, beds: 2, occupied: 1 }]);
+  assert.deepEqual(S.hiddenBlocks(doc, ['Global Village', 'Alfarah Asab']), []);
+});
+
+test('summary: Duty Board', () => {
   assert.deepEqual(S.dutyNumbers({ depts: [{ staff: [1, 2] }, { staff: [3] }, {}] }), { depts: 3, staff: 3 });
   assert.equal(S.dutyNumbers(null), null);
 });

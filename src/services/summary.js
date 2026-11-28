@@ -48,18 +48,56 @@ function campNumbers(doc, name, day) {
   return out;
 }
 
-/** Manpower: staff by status (the app keeps its list under the key gesStaffV4). */
-function manpowerNumbers(doc) {
-  const k = doc && isObj(doc.keys) ? doc.keys.gesStaffV4 : null;
-  const staff = k && Array.isArray(k.j) ? k.j : null;
+/** Leaving the company (the Manpower app's MV_STATS). */
+const MOVEMENTS = new Set(['Resigned', 'Terminated', 'Transferred', 'Other Location', 'Visa Issue']);
+
+/**
+ * Manpower, counted exactly like the app's own "Main List" (updateStats / countsInMain):
+ * departments switched off in its settings are not counted; people leaving count until their
+ * notice ends (inMainList); people on leave today are left out unless the setting says otherwise.
+ * `today` is the app's day (UTC date, as the app uses).
+ */
+function manpowerNumbers(doc, today) {
+  const keys = doc && isObj(doc.keys) ? doc.keys : null;
+  const staff = keys && keys.gesStaffV4 && Array.isArray(keys.gesStaffV4.j) ? keys.gesStaffV4.j : null;
   if (!staff) return null;
-  const active = staff.filter(s => s && String(s.status || '').toLowerCase() === 'active').length;
-  return { total: staff.length, active };
+  const settings = keys.gesSettings && isObj(keys.gesSettings.j) ? keys.gesSettings.j : {};
+  const deptOn = keys.gesDeptCount && isObj(keys.gesDeptCount.j) ? keys.gesDeptCount.j : {};
+  const out = { total: staff.length, mainList: 0, onLeave: 0, leaving: 0 };
+  for (const s of staff) {
+    if (!isObj(s) || deptOn[s.dept] === false) continue;
+    const moving = !!(s.movementType && MOVEMENTS.has(s.movementType));
+    if (moving) out.leaving++;
+    if (moving && s.inMainList === false) continue;
+    const onLeave = !!(s.onVacation && s.vacationStart && s.vacationStart <= today);
+    if (onLeave) out.onLeave++;
+    if (!onLeave || settings.countVac === true) out.mainList++;
+  }
+  return out;
 }
 
-/** Daily Costing: today's entry, change requests waiting, last confirmed day. */
-function costingNumbers(doc, day) {
-  if (!doc) return null;
+/**
+ * Camp Management blocks whose camp is not one of the camps in use (deleted or unknown):
+ * nobody can see them in the app. [{name, blocks, beds, occupied}]
+ */
+function hiddenBlocks(doc, activeNames) {
+  if (!doc || !isObj(doc.BLOCKS_META)) return [];
+  const active = new Set(activeNames);
+  const by = new Map();
+  for (const bk of Object.keys(doc.BLOCKS_META)) {
+    const name = Scope.blockCamp(doc, bk);
+    if (active.has(name)) continue;
+    const g = by.get(name) || { name, blocks: 0, beds: 0, occupied: 0 };
+    g.blocks++;
+    const rooms = isObj(doc.campData) && isObj(doc.campData[bk]) && isObj(doc.campData[bk].rooms) ? Object.values(doc.campData[bk].rooms) : [];
+    for (const r of rooms) for (const b of (r && Array.isArray(r.beds) ? r.beds : [])) { g.beds++; if (b && b.status === 'occupied') g.occupied++; }
+    by.set(name, g);
+  }
+  return [...by.values()];
+}
+
+/** Items with figures entered on a day (consumption or received). */
+function itemsEntered(doc, day) {
   const month = day.slice(0, 7), d = String(Number(day.slice(8)));
   const m = isObj(doc.months) ? doc.months[month] : null;
   const dayData = (section) => {
@@ -73,13 +111,30 @@ function costingNumbers(doc, day) {
   if (isObj(cons)) for (const [item, groups] of Object.entries(cons)) if (isObj(groups) && Object.values(groups).some(filled)) items.add(item);
   const recv = dayData('received');
   if (isObj(recv)) for (const [item, q] of Object.entries(recv)) if (filled(q)) items.add(item);
+  return items.size;
+}
+
+function previousDay(day) {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Daily Costing: today's and yesterday's entry, change requests waiting, last confirmed day. */
+function costingNumbers(doc, day) {
+  if (!doc) return null;
   const locks = isObj(doc.dayLocks) ? doc.dayLocks : {};
   const lockedDays = Object.keys(locks).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+  const status = (dd, n) => (locks[dd] ? 'confirmed' : n ? 'in progress' : 'not started');
+  const itemsToday = itemsEntered(doc, day);
+  const yesterday = previousDay(day);
+  const itemsYesterday = itemsEntered(doc, yesterday);
   const today = locks[day];
   return {
-    today: today ? 'confirmed' : items.size ? 'in progress' : 'not started',
+    today: status(day, itemsToday),
+    yesterday: status(yesterday, itemsYesterday),
     confirmedBy: today ? today.by || today.byUser || '' : '',
-    itemsToday: items.size,
+    itemsToday,
     pendingRequests: (Array.isArray(doc.dayRequests) ? doc.dayRequests : []).filter(r => r && r.status === 'pending').length,
     lastConfirmed: lockedDays.length ? lockedDays[lockedDays.length - 1] : null,
   };
@@ -115,7 +170,7 @@ class SummaryService {
         camp: campNumbers(campDoc, c.name, day),
         dining: diningDoc ? Object.assign({ meal: Dining.mealOf(hour, settings) }, await this.scans.dayCounts(c.id, day)) : null,
         costing: costingNumbers(this.doc('costing', c.id), day),
-        manpower: manpowerNumbers(this.doc('manpower', c.id)),
+        manpower: manpowerNumbers(this.doc('manpower', c.id), at.toISOString().slice(0, 10)),
         duty: dutyNumbers(this.doc('duty', c.id)),
       });
     }
@@ -129,9 +184,13 @@ class SummaryService {
       if (ATTENTION[a.action]) counts[ATTENTION[a.action]]++;
       if (a.action === 'login') counts.signIns++;
     }
+    const deleted = new Map(this.camps.deleted().map(c => [c.name, c.id]));
+    const hidden = hiddenBlocks(campDoc, this.camps.list().map(c => c.name))
+      .map(h => Object.assign(h, { deletedCampId: deleted.get(h.name) || null }));
     return {
       at: at.toISOString(), day,
       camps,
+      hiddenBlocks: hidden,
       portal: Object.assign({
         users: users.filter(u => !u.disabled).length,
         disabled: users.filter(u => u.disabled).length,
@@ -143,4 +202,4 @@ class SummaryService {
   }
 }
 
-module.exports = { SummaryService, campNumbers, costingNumbers, manpowerNumbers, dutyNumbers };
+module.exports = { SummaryService, campNumbers, costingNumbers, manpowerNumbers, dutyNumbers, hiddenBlocks };
