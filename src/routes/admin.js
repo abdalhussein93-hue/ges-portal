@@ -37,6 +37,19 @@ function register(router, { apps, documents, userAdmin, users, live, audit, conf
     ctx.json(200, camp);
   });
 
+  // deleted camps (their data is kept and comes back with "restore")
+  router.get('/api/admin/camps/deleted', admin, async ctx => {
+    ctx.json(200, camps.deleted());
+  });
+
+  router.delete('/api/admin/camps/:id', admin, async ctx => {
+    ctx.json(200, await camps.remove(ctx.user, ctx.params.id));
+  });
+
+  router.post('/api/admin/camps/:id/restore', admin, async ctx => {
+    ctx.json(200, await camps.restore(ctx.user, ctx.params.id));
+  });
+
   // ---------- users ----------
   router.get('/api/admin/users', admin, async ctx => {
     const online = live.onlineUsernames();

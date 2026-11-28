@@ -132,6 +132,43 @@ describe('Camps (PostgreSQL)', () => {
     assert.equal((await get(again, '/api/apps/costing/data?camp=dycc')).status, 200);
   });
 
+  it('deleting a camp: refused while it has blocks or is the first camp; otherwise hidden, data kept, restorable', async () => {
+    let r = await P.request('DELETE', '/api/admin/camps/gv', { cookie: admin });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /first camp/);
+    r = await P.request('DELETE', '/api/admin/camps/alfarah', { cookie: admin });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /1 block in Camp Management \(AF1\)/);
+    let c = await P.login('af.op', 'af.op-password');
+    assert.equal((await P.request('DELETE', '/api/admin/camps/dycc', { cookie: c })).status, 403, 'only portal admins');
+    // DYCC: give it some data first
+    const d = costingDoc(); d.settings.lowStock = 7;
+    assert.equal((await P.request('POST', '/api/apps/costing/patch?camp=dycc', { cookie: admin, body: { baseRev: 0, ops: Patch.diff({}, d) } })).status, 200);
+    r = await P.request('DELETE', '/api/admin/camps/dycc', { cookie: admin });
+    assert.equal(r.status, 200, r.text);
+    assert.deepEqual((await get(admin, '/api/admin/camps')).json.map(c => c.id), ['gv', 'alfarah']);
+    assert.deepEqual((await get(admin, '/api/admin/camps/deleted')).json.map(c => [c.id, c.deletedBy]), [['dycc', 'admin']]);
+    assert.ok(!P.container.documents.get('camp').doc.campList.includes('DYCC'), 'gone from Camp Management\'s camp switcher');
+    c = await P.login('af.op', 'af.op-password');
+    assert.deepEqual((await get(c, '/api/me')).json.camps.map(x => x.id), ['alfarah']);
+    assert.equal((await get(c, '/api/apps/costing/data?camp=dycc')).status, 403);
+    assert.equal(P.container.documents.get('costing~dycc').doc.settings.lowStock, 7, 'nothing erased');
+    r = await P.request('POST', '/api/admin/camps', { cookie: admin, body: { name: 'DYCC' } });
+    assert.equal(r.status, 400);
+    assert.match(r.json.error, /deleted camp/);
+    // restore: everything back as it was
+    r = await P.request('POST', '/api/admin/camps/dycc/restore', { cookie: admin, body: {} });
+    assert.equal(r.status, 200, r.text);
+    assert.ok(P.container.documents.get('camp').doc.campList.includes('DYCC'));
+    assert.deepEqual((await get(c, '/api/me')).json.camps.map(x => x.id), ['alfarah', 'dycc'], 'the same people have it again');
+    assert.equal((await get(c, '/api/apps/costing/data?camp=dycc')).json.doc.settings.lowStock, 7);
+    // a new camp never gets a deleted camp's id (and data)
+    await P.request('DELETE', '/api/admin/camps/dycc', { cookie: admin });
+    r = await P.request('POST', '/api/admin/camps', { cookie: admin, body: { name: 'DYCC New' } });
+    assert.equal(r.json.id, 'dycc-new');
+    await P.request('POST', '/api/admin/camps/dycc/restore', { cookie: admin, body: {} });
+  });
+
   it('per-camp backups and imports on the admin page', async () => {
     const snap = await P.request('POST', '/api/admin/apps/costing/snapshots?camp=alfarah', { cookie: admin, body: { label: 'test' } });
     assert.equal(snap.status, 200, snap.text);
