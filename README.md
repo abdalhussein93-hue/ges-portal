@@ -93,8 +93,11 @@ became `Côte d’Ivoire` in the Camp nationality list.
 
 ## Put it online on Railway (recommended)
 
-The repository contains `railway.json`: Railway builds the `Dockerfile`, checks `/healthz`, restarts on failure,
-and runs **one** copy of the server (the server is the single writer of the database - do not add replicas).
+The Railway service settings are kept in `.railway/railway.ts` (Railway's Infrastructure as Code): Railway builds the
+`Dockerfile`, checks `/healthz`, restarts on failure, and runs **one** copy of the server (the server is the single
+writer of the database - do not add replicas). Railway does not read this file during deploys: after changing it, run
+`railway config plan` (preview) and `railway config apply` from the project folder (needs `npm install` for the
+`railway` dev package). Service variables are not managed by the file (they stay as set in Railway).
 
 1. On [railway.com](https://railway.com): **New Project → Deploy from GitHub repo** → choose this repository
    (allow Railway's GitHub app to read it).

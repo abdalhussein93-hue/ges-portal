@@ -11,6 +11,7 @@ export default defineRailway(() => {
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     healthcheck: "/healthz",
     healthcheckTimeout: 120,
+    deploy: { restartPolicyType: "ON_FAILURE", restartPolicyMaxRetries: 10 }, // restart if the server stops
     replicas: { "sfo": 1 },
   });
 
